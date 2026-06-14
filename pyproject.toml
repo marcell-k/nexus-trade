@@ -1,0 +1,47 @@
+[project]
+name = "nexus-trade"
+version = "0.1.0"
+description = "Production-grade multiprocessing algorithmic trading framework for MetaTrader 5"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "MetaTrader5>=5.0.5370",
+    "numpy>=2.0",
+    "pandas>=2.0",
+    "pandas-stubs>=3.0.3.260530",
+    "pydantic>=2.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.0",
+    "ruff>=0.4",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[project.scripts]
+nexus-trade = "nexus_trade.cli:main"
+
+[tool.ruff]
+line-length = 120
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "ANN", "B", "D", "E", "F", "I", "RUF", "S", "SIM", "UP",
+    "C4", "FA", "ICN", "ISC", "NPY", "PTH", "TC", "TID", "W"
+]
+ignore = ["ANN401", "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D213", "D212", "D205"]
+
+# --- Basedpyright configuration goes here ---
+[tool.basedpyright]
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src"]
+stubPath = "typings"
+reportImplicitStringConcatenation = false
+

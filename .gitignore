@@ -1,0 +1,32 @@
+# Environment and secrets
+*.env*
+
+# Python
+.DS_Store
+*.pyc
+*.pyd
+*.pyo
+*.so
+.Python
+__pycache__/
+.python-version
+.pytest_cache/
+
+# Logs
+*.log
+logs/
+
+# Venv
+.venv/
+
+src/nexus_trade/strategies
+!src/nexus_trade/strategies/base.py
+!src/nexus_trade/strategies/sma_crossover/
+
+# Profiles
+src/nexus_trade/config/profiles/
+!config/profiles/example.toml
+
+.ruff_cache/
+uv.lock
+pyrightconfig.json
