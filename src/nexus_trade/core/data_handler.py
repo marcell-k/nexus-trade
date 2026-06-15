@@ -113,9 +113,10 @@ class DataHandler:
         should_skip, bars_elapsed = self._check_cache_state(cached_metadata, now_broker)
 
         if should_skip or bars_elapsed < 1.0:
-            return self._return_cached_window(cache_key, strategy_config) or self._full_refresh_bars(
-                symbol, strategy_config, cache_key, strategy_tz
-            )
+            cached = self._return_cached_window(cache_key, strategy_config)
+            if cached is not None:
+                return cached
+            return self._full_refresh_bars(symbol, strategy_config, cache_key, strategy_tz)
 
         if bars_elapsed <= 1.1:
             return self._fetch_and_append_new_bar(symbol, strategy_config, cache_key, strategy_tz)
