@@ -12,6 +12,11 @@ __pycache__/
 .python-version
 .pytest_cache/
 
+# Build artifacts
+*.egg-info/
+dist/
+build/
+
 # Logs
 *.log
 logs/

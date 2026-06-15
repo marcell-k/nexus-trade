@@ -206,7 +206,7 @@ class Orchestrator:
 
     def discover_strategies(self) -> None:
         for strategy_name in self._profile.enabled_strategy_names:
-            config_module_path = f"strategies.{strategy_name}.config"
+            config_module_path = f"nexus_trade.strategies.{strategy_name}.config"
             try:
                 config_module = importlib.import_module(config_module_path)
                 config: StrategyConfig[BaseStrategyParams] = config_module.get_config()
