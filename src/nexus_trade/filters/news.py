@@ -341,21 +341,19 @@ class NewsFilter:
             return self.fail_open
 
         self._ensure_holiday_indexes()
-        check_time_broker = check_time.astimezone(self.broker_tz)
-        check_date_broker = check_time_broker.date()
+        check_date_strategy = check_time.date()
 
         if self.filter_currencies:
             for currency in self.filter_currencies:
                 holidays_for_currency = self._holiday_dates_by_currency.get(currency)
-                if holidays_for_currency and check_date_broker in holidays_for_currency:
+                if holidays_for_currency and check_date_strategy in holidays_for_currency:
                     return False
         else:
-            if check_date_broker in self._all_holiday_dates:
+            if check_date_strategy in self._all_holiday_dates:
                 return False
 
         if self._high_impact_times_epoch is None:
             self._rebuild_event_indexes()
-
         if self._high_impact_times_epoch is None or self._high_impact_times_epoch.size == 0:
             return True
 

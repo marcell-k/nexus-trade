@@ -15,10 +15,10 @@ uv sync --dev
 ## Before opening a PR
 
 ```bash
-uv run ruff check src tests        
-uv run ruff format src tests      
-uv run basedpyright src          
-uv run pytest tests/unit -q     
+uv run ruff check src tests
+uv run ruff format src tests
+uv run basedpyright src
+uv run pytest tests/unit -q
 ```
 
 All four must pass. The CI gate runs the same commands.
