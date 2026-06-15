@@ -162,7 +162,7 @@ class StrategyRunner:
         self.position_state_lock: threading.Lock = threading.Lock()
 
         self.meta_model: XGBClassifierProtocol | None = None
-        self.calibration_model: ProbabilityCalibrator | None = None
+        self.calibration_model: ProbabilityCalibrator[object] | None = None
         self.feature_extractor: Callable[[pd.DataFrame], pd.DataFrame] | None = None
         self.meta_min_confidence: float = 0.0
 
@@ -311,11 +311,10 @@ class StrategyRunner:
             logger.debug(f"MetaCfg strat={self.strategy_name} | enabled=0")
             return
 
-        self.meta_model = load_meta_model(self.strategy_name)
-        self.calibration_model = load_calibration_model(self.strategy_name) if cfg.use_calibration else None
-        self.feature_extractor = load_features_extractor(self.strategy_name)
+        self.meta_model = load_meta_model(cfg, self.strategy_name)
+        self.calibration_model = load_calibration_model(cfg, self.strategy_name)
+        self.feature_extractor = load_features_extractor(cfg, self.strategy_name)
         self.meta_min_confidence = cfg.min_confidence
-
         if self.meta_model is None:
             logger.warning(f"MetaCfgWarn strat={self.strategy_name} | enabled=1 | model=missing")
 

@@ -5,26 +5,19 @@ import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from nexus_trade.config.risk import META_LABELING_CONFIG
-
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from nexus_trade.config.profile import MetaLabelingCfg
     from nexus_trade.core.protocols import XGBClassifierProtocol
+    from nexus_trade.tools.calibrator import ProbabilityCalibrator
 
 
 logger = logging.getLogger(__name__)
 
 
-def _get_config(strategy_name: str, key: str = "enabled") -> dict | None:
-    config = META_LABELING_CONFIG.get(strategy_name)
-    if not config or not config.get(key, False):
-        return None
-    return config
-
-
-def load_meta_model(strategy_name: str) -> XGBClassifierProtocol | None:
-    if not _get_config(strategy_name):
+def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierProtocol | None:
+    if not cfg.enabled:
         return None
 
     model_path = Path(f"nexus_trade/strategies/{strategy_name}/models/prod_v1.json")
@@ -48,8 +41,8 @@ def load_meta_model(strategy_name: str) -> XGBClassifierProtocol | None:
         return None
 
 
-def load_calibration_model(strategy_name: str) -> XGBClassifierProtocol | None:
-    if not _get_config(strategy_name, "use_calibration"):
+def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> ProbabilityCalibrator[object] | None:
+    if not cfg.use_calibration:
         return None
 
     calibration_dir = Path(f"nexus_trade/strategies/{strategy_name}/calibration_models")
@@ -63,9 +56,18 @@ def load_calibration_model(strategy_name: str) -> XGBClassifierProtocol | None:
         logger.warning(f"{strategy_name}: ProbabilityCalibrator not available")
         return None
 
+    try:
+        return ProbabilityCalibrator.load_state(str(calibration_dir))
+    except FileNotFoundError:
+        logger.warning(f"{strategy_name}: Calibration state not found | path={calibration_dir}")
+        return None
+    except Exception as error:
+        logger.warning(f"{strategy_name}: Failed to load calibration model | err={error}")
+        return None
 
-def load_features_extractor(strategy_name: str) -> Callable | None:
-    if not _get_config(strategy_name):
+
+def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callable[..., object] | None:
+    if not cfg.enabled:
         return None
 
     try:
@@ -80,14 +82,3 @@ def load_features_extractor(strategy_name: str) -> Callable | None:
         return None
 
     return extractor
-
-
-def get_min_confidence(strategy_name: str) -> float:
-    config = META_LABELING_CONFIG.get(strategy_name)
-    if not config:
-        return 0.0
-    try:
-        return float(config.get("min_confidence", 0.0))
-    except (TypeError, ValueError):
-        logger.warning(f"{strategy_name}: Invalid min_confidence in config | fallback=0.0")
-        return 0.0
