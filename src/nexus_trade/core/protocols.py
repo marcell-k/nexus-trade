@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
-import numpy as np
-import pandas as pd
-
 if TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+
     from nexus_trade.core.models import Position
     from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequestResult
 
@@ -96,8 +96,8 @@ class ProcessLock(Protocol):
 
     def acquire(self, block: bool = True, timeout: float = -1) -> bool: ...
     def release(self) -> None: ...
-    def __enter__(self) -> bool: ...
-    def __exit__(self, *args: object) -> None: ...
+    def __enter__(self) -> bool: ...  # noqa: D105
+    def __exit__(self, *args: object) -> None: ...  # noqa: D105
 
 
 class AtomicInt(Protocol):

@@ -12,7 +12,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 import MetaTrader5 as mt
 import numpy as np
@@ -56,7 +56,7 @@ if TYPE_CHECKING:
     from nexus_trade.config.account import AccountConfig
     from nexus_trade.config.profile import MetaLabelingCfg
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig, StrategyOrderType
-    from nexus_trade.core.protocols import AtomicInt, MT5Tick, ProcessLock, XGBClassifierProtocol
+    from nexus_trade.core.protocols import AtomicInt, MT5Tick, ProcessLock, StrategyProtocol, XGBClassifierProtocol
     from nexus_trade.tools.calibrator import ProbabilityCalibrator
 
 
@@ -73,7 +73,7 @@ _BRACKET_EXPIRY_GRACE_SECONDS: int = 30
 
 
 def _position_to_cache_entry(pos: Position) -> PositionCacheEntry:
-    """Convert a Pydantic Position model to a PositionCacheEntry."""
+    """Convert a Pydantic ``Position`` model to a ``PositionCacheEntry``."""
     return PositionCacheEntry(
         ticket=pos.ticket,
         symbol=pos.symbol,
@@ -91,7 +91,7 @@ def _position_to_cache_entry(pos: Position) -> PositionCacheEntry:
 
 @dataclass
 class RunnerConfig:
-    """Consolidated configuration for StrategyRunner initialization."""
+    """Consolidated configuration for ``StrategyRunner`` initialization."""
 
     strategy_name: str
     strategy_config: StrategyConfig[BaseStrategyParams]
@@ -128,7 +128,7 @@ class StrategyRunner:
         self.executor: OrderExecutor | None = None
         self.risk_manager: RiskManager | None = None
 
-        # self._strategy = strategy_class(params=self.config.params)
+        self.strategy: StrategyProtocol | None = None
 
         self.position_repo: PositionRepository = PositionRepository(
             shared_state=self.shared_state,
@@ -193,7 +193,7 @@ class StrategyRunner:
             raise RuntimeError(f"SetupFail strat={self.strategy_name} | step=mt5_connect")
 
         strategy_class = self._load_strategy_class()
-        self.strategy = strategy_class(params=self.config.params)
+        self.strategy = cast("StrategyProtocol", strategy_class(params=self.config.params))
 
         self.data_handler = DataHandler(self.broker_tz)
         self.executor = OrderExecutor(self.broker_tz)
@@ -786,7 +786,6 @@ class StrategyRunner:
             metadata = self.entry_metadata[pending_trade_id]
             metadata["ticket"] = ticket
             metadata["expected_entry_price"] = conditions.buy_stop if is_buy else conditions.sell_stop
-            # Resolved from actual position — no buy_sl/sell_sl needed
             metadata["opening_sl"] = pos.sl if pos.sl else None
 
         opposite_ticket = conditions.sell_order_ticket if is_buy else conditions.buy_order_ticket
@@ -900,6 +899,8 @@ class StrategyRunner:
         return volume_multiplier, adjusted_volume
 
     def _process_entry_signal(self, data: pd.DataFrame) -> None:
+        assert self.strategy is not None, f"{self.strategy_name}: strategy not initialized"
+
         entry_request: EntryRequest | None = self.strategy.generate_entry_signal(data)
         if entry_request is None:
             return
@@ -984,26 +985,29 @@ class StrategyRunner:
     def _process_modify_signals(
         self, data: pd.DataFrame, preloaded_positions: list[PositionCacheEntry] | None = None
     ) -> None:
+        assert self.strategy is not None, f"{self.strategy_name}: strategy not initialized"
+
+        positions: list[PositionCacheEntry]
         if preloaded_positions is not None:
             with self.position_state_lock:
                 known = frozenset(self.known_positions)
-            positions: list[PositionCacheEntry] = [p for p in preloaded_positions if p["ticket"] in known]
+            positions = [p for p in preloaded_positions if p["ticket"] in known]
         else:
-            positions = self._load_strategy_positions(mode="cache", include_unknown=False)
-
-        if positions is None:
-            logger.error(f"{self.strategy_name:<9}: ModifySkip reason=mt5_api_failure")
-            raise RuntimeError(f"{self.strategy_name}: MT5 positions_get() returned None during modify pass")
+            loaded = self._load_strategy_positions(mode="cache", include_unknown=False)
+            if loaded is None:
+                logger.error(f"{self.strategy_name:<9}: ModifySkip reason=mt5_api_failure")
+                raise RuntimeError(f"{self.strategy_name}: MT5 positions_get() returned None during modify pass")
+            positions = loaded
 
         if not positions:
             return
 
         for entry in positions:
-            request = self.strategy.generate_modify_signal(entry, data)
+            pos = cache_entry_to_position(entry)
+            request = self.strategy.generate_modify_signal(pos, data)
             if request is None:
                 continue
             if isinstance(request, ExitRequest):
-                pos = cache_entry_to_position(entry)
                 self._execute_and_log_exit(request, pos, "BAR-ALIGNED")
             elif isinstance(request, ModifyRequest):
                 self._handle_modify_adjustment(request)
@@ -1259,6 +1263,7 @@ class StrategyRunner:
             self._cancel_opposite_bracket_orders(positions=positions, mt5_orders=mt5_orders)
 
     def _check_and_execute_exit(self, pos: Position, data: pd.DataFrame) -> None:
+        assert self.strategy is not None, f"{self.strategy_name}: strategy not initialized"
         exit_request = self.strategy.generate_exit_signal(pos, data)
         if exit_request is None:
             return
@@ -1307,7 +1312,6 @@ class StrategyRunner:
         """Calculate next entry time aligned to timeframe boundary from given time."""
         offset_td = timedelta(seconds=self.strategy_offset_seconds)
 
-        # Calculate next timeframe boundary
         next_boundary_minute = ((from_time.minute // self.timeframe_minutes) + 1) * self.timeframe_minutes
         hours_to_add = next_boundary_minute // 60
         adjusted_minute = next_boundary_minute % 60
@@ -1317,7 +1321,6 @@ class StrategyRunner:
             next_entry += timedelta(hours=hours_to_add)
         next_entry += offset_td
 
-        # Handle edge case where offset pushes us backwards
         if next_entry <= from_time:
             next_entry += timedelta(minutes=self.timeframe_minutes)
 
@@ -1327,11 +1330,9 @@ class StrategyRunner:
         """Calculate next exit time at next minute boundary from given time."""
         offset_td = timedelta(seconds=self.strategy_offset_seconds)
 
-        # Round up to next minute boundary
         next_exit = from_time.replace(second=0, microsecond=0) + timedelta(minutes=1)
         next_exit += offset_td
 
-        # Handle edge case where offset pushes us backwards
         if next_exit <= from_time:
             next_exit += timedelta(minutes=1)
 
@@ -1345,29 +1346,21 @@ class StrategyRunner:
         return next_entry, next_exit
 
     def _should_check_entry_signal(self, data: pd.DataFrame) -> bool:
-        """Check if we should process entry signal (timeframe-aligned).
-
-        For 1M timeframe: always process (every bar is new).
-        For multi-minute timeframes: deduplicate by comparing bar timestamps.
-        """
+        """Return True if bar is new and entry signal should be evaluated."""
         if len(data) == 0:
             return False
 
-        # 1M timeframe: process every bar
         if self.timeframe_minutes == 1:
             return True
 
-        # Multi-minute timeframe: deduplicate bars
         current_bar_time = data.index[-1]
 
-        # Validate timezone-aware comparison (DataHandler returns TZ-aware timestamps)
         if self.last_processed_bar_time is not None:
             if current_bar_time.tzinfo is None or self.last_processed_bar_time.tzinfo is None:
                 logger.warning(
                     f"BarTZWarn strat={self.strategy_name} | cur_tz={current_bar_time.tzinfo} | "
                     f"last_tz={self.last_processed_bar_time.tzinfo}"
                 )
-                # Fail-safe: treat as new bar to avoid blocking trades
                 self.last_processed_bar_time = current_bar_time
                 return True
 
@@ -1392,7 +1385,7 @@ def run_strategy_process(
     meta_labeling: MetaLabelingCfg,
     strategy_offset_seconds: float = 0.0,
 ) -> None:
-    """Entry point for multiprocessing.Process."""
+    """Entry point for ``multiprocessing.Process``."""
     log_root = Path(global_risk_policy["log_root"])
     log_root.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
