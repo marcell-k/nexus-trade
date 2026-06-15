@@ -52,7 +52,7 @@ def repo(fresh_state: dict) -> PositionRepository:
     )
 
 
-#  cache hit 
+#  cache hit
 
 
 class TestCacheHit:
@@ -99,7 +99,7 @@ class TestCacheHit:
         assert result == []
 
 
-#  cache stale 
+#  cache stale
 
 
 class TestCacheStale:
@@ -110,7 +110,7 @@ class TestCacheStale:
         mt5.positions_get.return_value = ()
 
         fresh_state["position_cache_timestamp"] = time.time() - 120  # 2 min old
-        repo = PositionRepository(fresh_state, _make_lock(), staleness_threshold=60)
+        repo = PositionRepository(fresh_state, _make_lock(), 60)
         result = repo.get_strategy_positions("EURUSD", magic=99, prefer_cache=True)
         assert result == []
         mt5.positions_get.assert_called()
@@ -124,7 +124,7 @@ class TestCacheStale:
         mt5.positions_get.assert_not_called()
 
 
-#  cache_age_seconds / is_cache_fresh 
+#  cache_age_seconds / is_cache_fresh
 
 
 class TestCacheMetrics:
@@ -141,7 +141,7 @@ class TestCacheMetrics:
         assert repo.is_cache_fresh() is False
 
 
-#  get_managed_positions 
+#  get_managed_positions
 
 
 class TestGetManagedPositions:

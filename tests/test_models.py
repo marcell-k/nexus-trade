@@ -16,7 +16,7 @@ from nexus_trade.core.models import (
 )
 from nexus_trade.core.state import PositionCacheEntry
 
-#  NormalizedPosition.from_mt5 
+#  NormalizedPosition.from_mt5
 
 
 class TestNormalizedPositionFromMt5:
@@ -76,7 +76,7 @@ class TestNormalizedPositionFromMt5:
         assert pos.magic == 99
 
 
-#  NormalizedPosition.to_cache_entry 
+#  NormalizedPosition.to_cache_entry
 
 
 class TestNormalizedPositionToCacheEntry:
@@ -108,7 +108,7 @@ class TestNormalizedPositionToCacheEntry:
         assert required.issubset(self._pos().to_cache_entry().keys())
 
 
-#  NormalizedPosition.to_partial_snapshot 
+#  NormalizedPosition.to_partial_snapshot
 
 
 class TestNormalizedPositionToPartialSnapshot:
@@ -133,7 +133,7 @@ class TestNormalizedPositionToPartialSnapshot:
         assert snap.swap == pytest.approx(0.0)
 
 
-#  Tick 
+#  Tick
 
 
 class TestTick:
@@ -175,7 +175,7 @@ class TestTick:
         assert t.spread == pytest.approx(0.0)
 
 
-#  order_succeeded 
+#  order_succeeded
 
 
 class TestOrderSucceeded:
@@ -198,7 +198,7 @@ class TestOrderSucceeded:
         assert order_succeeded(object()) is False
 
 
-#  order_ticket 
+#  order_ticket
 
 
 class TestOrderTicket:
@@ -212,7 +212,7 @@ class TestOrderTicket:
         assert order_ticket(object()) == 0
 
 
-#  cache_entry_to_position 
+#  cache_entry_to_position
 
 
 class TestCacheEntryToPosition:
@@ -266,7 +266,7 @@ class TestCacheEntryToPosition:
         assert pos.magic == 42
 
 
-#  ExitLogData 
+#  ExitLogData
 
 
 class TestExitLogData:
@@ -297,7 +297,7 @@ class TestExitLogData:
         assert d.deal_id == 9999
 
 
-#  Position frozen dataclass 
+#  Position frozen dataclass
 
 
 class TestPosition:

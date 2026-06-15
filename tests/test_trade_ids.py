@@ -124,7 +124,7 @@ class TestContextManager:
     def test_context_manager_closes(self, db_path: Path) -> None:
         with TradeIDSequenceManager(db_path) as mgr:
             mgr.generate_id()
-        assert mgr._conn is None  # noqa: SLF001 — testing internal state
+        assert mgr._conn is None
 
     def test_reopen_after_context(self, db_path: Path) -> None:
         with TradeIDSequenceManager(db_path) as mgr:

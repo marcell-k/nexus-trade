@@ -16,49 +16,40 @@ from nexus_trade.core.state import SharedState
 logger = logging.getLogger(__name__)
 
 
+_REQUIRED_COLS: frozenset[str] = frozenset({"Date", "Time", "Currency", "Event", "Impact", "Type"})
+_IMPACT_MAPPING: dict[str, str] = {"NONE": "None", "LOW": "Low", "MEDIUM": "Medium", "HIGH": "High"}
+
+
 def preprocess_calendar_file(
     calendar_path: Path, broker_tz: ZoneInfo
 ) -> tuple[pd.DataFrame, frozenset[tuple[str, date]]]:
     """Parse and validate economic calendar CSV from MT5 export."""
     df = pd.read_csv(calendar_path, delimiter=",", dtype=str, encoding="utf-16")
-    object_columns = df.select_dtypes(include="object").columns
-    if len(object_columns) > 0:
-        df[object_columns] = df[object_columns].apply(lambda column: column.str.strip())
+    df = df.apply(lambda col: col.str.strip())
 
-    required_cols = {"Date", "Time", "Currency", "Event", "Impact", "Type"}
-    missing = required_cols - set(df.columns)
-    if missing:
+    if missing := _REQUIRED_COLS - set(df.columns):
         logger.error(f"CalParseFail reason=missing_cols | cols={sorted(missing)}")
         return pd.DataFrame(), frozenset()
 
     df = df.dropna(subset=["Date", "Time", "Currency", "Event"]).copy()
     df["Impact"] = df["Impact"].fillna("LOW")
     df["Type"] = df["Type"].fillna("Unknown")
-
-    impact_mapping = {
-        "NONE": "None",
-        "LOW": "Low",
-        "MEDIUM": "Medium",
-        "HIGH": "High",
-    }
-    df["priority"] = df["Impact"].str.upper().map(impact_mapping).fillna("Low")
+    df["priority"] = df["Impact"].str.upper().map(_IMPACT_MAPPING).fillna("Low")
     df = df.rename(columns={"Event": "event_name", "Currency": "currency"})
 
-    parsed_broker_time = pd.to_datetime(df["Date"] + " " + df["Time"], format="%Y.%m.%d %H:%M", errors="coerce")
-    invalid_parsed = parsed_broker_time.isna()
-
-    if invalid_parsed.all():
+    parsed_times = pd.to_datetime(df["Date"] + " " + df["Time"], format="%Y.%m.%d %H:%M", errors="coerce")
+    valid = parsed_times.notna()
+    if not valid.any():
         return pd.DataFrame(), frozenset()
 
-    df = df.loc[~invalid_parsed].copy()
-    parsed_broker_time = parsed_broker_time.loc[~invalid_parsed]
-    localized_broker_time = parsed_broker_time.dt.tz_localize(broker_tz, ambiguous="NaT", nonexistent="shift_forward")
+    df = df.loc[valid].copy()
+    df["time_broker"] = parsed_times.loc[valid].dt.tz_localize(broker_tz, ambiguous="NaT", nonexistent="shift_forward")
 
-    df["time_broker"] = localized_broker_time
     holiday_mask = df["Type"].str.contains("Holiday", case=False, na=False)
     holidays = frozenset(
-        zip(df.loc[holiday_mask, "currency"], df.loc[holiday_mask, "time_broker"].dt.date, strict=True),
+        zip(df.loc[holiday_mask, "currency"], df.loc[holiday_mask, "time_broker"].dt.date, strict=True)
     )
+
     logger.debug(f"CalPreproc rows={len(df)}")
     return df, holidays
 

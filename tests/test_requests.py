@@ -13,7 +13,7 @@ from nexus_trade.execution.request import (
     ModifyRequest,
 )
 
-#  EntryRequest 
+#  EntryRequest
 
 
 class TestEntryRequestValidation:
@@ -105,7 +105,7 @@ class TestEntryRequestValidation:
         assert req.sell_stop == pytest.approx(1.09900)
 
 
-#  ExitRequest 
+#  ExitRequest
 
 
 class TestExitRequestValidation:
@@ -149,7 +149,7 @@ class TestExitRequestValidation:
         assert req.exit_reason == ""
 
 
-#  ModifyRequest 
+#  ModifyRequest
 
 
 class TestModifyRequest:
@@ -164,7 +164,7 @@ class TestModifyRequest:
         assert req.new_sl == pytest.approx(1.09000)
 
 
-#  ExecutionResult 
+#  ExecutionResult
 
 
 class TestExecutionResult:

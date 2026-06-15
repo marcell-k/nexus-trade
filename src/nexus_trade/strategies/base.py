@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import time as dt_time
 from functools import lru_cache
+from typing import TYPE_CHECKING
 
 import pandas as pd
 
 from nexus_trade.config.strategy import BaseStrategyParams
-from nexus_trade.core.models import Position
-from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequestResult
+
+if TYPE_CHECKING:
+    from datetime import time as dt_time
+
+    from nexus_trade.core.models import Position
+    from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequestResult
 
 
 class BaseStrategy[T_Params: BaseStrategyParams](ABC):
@@ -42,6 +46,7 @@ class BaseStrategy[T_Params: BaseStrategyParams](ABC):
 
         Args:
             data: OHLCV DataFrame with timezone-aware index, length == ``backcandles + 1``.
+
         """
         ...
 
@@ -55,6 +60,7 @@ class BaseStrategy[T_Params: BaseStrategyParams](ABC):
         Args:
             pos:  Live position snapshot.
             data: Latest OHLCV bars.
+
         """
         ...
 
@@ -70,6 +76,7 @@ class BaseStrategy[T_Params: BaseStrategyParams](ABC):
         Args:
             pos:  Live position snapshot.
             data: Latest OHLCV bars.
+
         """
         ...
 

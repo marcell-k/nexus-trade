@@ -4,21 +4,19 @@ from __future__ import annotations
 
 import sys
 import time
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
 from nexus_trade.config.strategy import (
     ExecutionConfig,
-    FiltersConfig,
     RiskConfig,
     StrategyConfig,
-    TradingHoursConfig,
 )
 from nexus_trade.core.data_handler import DataHandler
-from nexus_trade.risk.manager import RiskManager, ValidationResult
+from nexus_trade.risk.manager import RiskManager
 
-#  Fixtures 
+#  Fixtures
 
 
 @pytest.fixture
@@ -74,7 +72,6 @@ def clean_shared_state() -> dict:
 
 @pytest.fixture
 def atomic_counter() -> MagicMock:
-    from multiprocessing import Value
 
     counter = MagicMock()
     counter.value = 0
@@ -125,7 +122,7 @@ def risk_manager(
     )
 
 
-#  check_global_risk 
+#  check_global_risk
 
 
 class TestCheckGlobalRisk:
@@ -167,7 +164,7 @@ class TestCheckGlobalRisk:
         assert result.can_trade is True
 
 
-#  check_strategy_limits 
+#  check_strategy_limits
 
 
 class TestCheckStrategyLimits:
@@ -200,7 +197,7 @@ class TestCheckStrategyLimits:
         assert result.can_trade is True
 
 
-#  calculate_position_size 
+#  calculate_position_size
 
 
 class TestCalculatePositionSize:
@@ -258,12 +255,12 @@ class TestCalculatePositionSize:
         assert volume >= eurusd_info.volume_min
 
 
-#  _get_adaptive_risk_multiplier 
+#  _get_adaptive_risk_multiplier
 
 
 class TestAdaptiveRiskMultiplier:
     def test_returns_one_when_disabled(self, risk_manager: RiskManager) -> None:
-        multiplier = risk_manager._get_adaptive_risk_multiplier("test_strategy")  # noqa: SLF001
+        multiplier = risk_manager._get_adaptive_risk_multiplier("test_strategy")
         assert multiplier == pytest.approx(1.0)
 
     def test_applies_threshold_when_enabled(
@@ -308,16 +305,16 @@ class TestAdaptiveRiskMultiplier:
             broker_tz=ZoneInfo("Etc/GMT-3"),
             strategy_runner=mock_runner,
         )
-        multiplier = rm._get_adaptive_risk_multiplier("test_strategy")  # noqa: SLF001
+        multiplier = rm._get_adaptive_risk_multiplier("test_strategy")
         assert multiplier == pytest.approx(0.5)
 
     def test_no_active_threshold_returns_one(self, risk_manager: RiskManager, clean_shared_state: dict) -> None:
         clean_shared_state["max_drawdown"] = 0.0
-        multiplier = risk_manager._get_adaptive_risk_multiplier("test_strategy")  # noqa: SLF001
+        multiplier = risk_manager._get_adaptive_risk_multiplier("test_strategy")
         assert multiplier == pytest.approx(1.0)
 
 
-#  _normalize_volume 
+#  _normalize_volume
 
 
 class TestNormalizeVolume:
@@ -327,14 +324,13 @@ class TestNormalizeVolume:
         spec = SymbolSpec.from_mt5.__func__(SymbolSpec, "EURUSD")  # type: ignore[attr-defined]
 
     def test_clamps_below_min(self, risk_manager: RiskManager, eurusd_info) -> None:
-        from nexus_trade.core.symbol import SymbolSpec
 
         # Build a minimal SymbolSpec directly
         spec = MagicMock()
         spec.volume_min = 0.01
         spec.volume_max = 100.0
         spec.volume_step = 0.01
-        result = risk_manager._normalize_volume(0.001, spec)  # noqa: SLF001
+        result = risk_manager._normalize_volume(0.001, spec)
         assert result == pytest.approx(0.01)
 
     def test_clamps_above_max(self, risk_manager: RiskManager) -> None:
@@ -342,7 +338,7 @@ class TestNormalizeVolume:
         spec.volume_min = 0.01
         spec.volume_max = 100.0
         spec.volume_step = 0.01
-        result = risk_manager._normalize_volume(999.0, spec)  # noqa: SLF001
+        result = risk_manager._normalize_volume(999.0, spec)
         assert result == pytest.approx(100.0)
 
     def test_step_rounding(self, risk_manager: RiskManager) -> None:
@@ -351,11 +347,11 @@ class TestNormalizeVolume:
         spec.volume_max = 100.0
         spec.volume_step = 0.10
         # 0.14 should round to nearest 0.10 step → 0.10
-        result = risk_manager._normalize_volume(0.14, spec)  # noqa: SLF001
+        result = risk_manager._normalize_volume(0.14, spec)
         assert result == pytest.approx(0.10)
 
 
-#  release_position_reservation 
+#  release_position_reservation
 
 
 class TestReleasePositionReservation:

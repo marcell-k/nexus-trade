@@ -12,12 +12,11 @@ import sys
 import time
 from collections import namedtuple
 from pathlib import Path
-from zoneinfo import ZoneInfo
 
 import pytest
 
 from nexus_trade.core.state import PositionCacheEntry
-from nexus_trade.logging.logger import CloseData, FillData, PartialCloseData, TradeLogger
+from nexus_trade.logging.logger import CloseData, FillData, TradeLogger
 
 #  Fixtures
 
@@ -204,7 +203,7 @@ def _make_entry(
 
 
 def _query(logger: TradeLogger, trade_id: int, partial_seq: int = 0) -> dict | None:
-    conn = logger._get_connection()  # noqa: SLF001
+    conn = logger._get_connection()
     row = conn.execute(
         "SELECT * FROM trades WHERE trade_id=? AND partial_sequence=?",
         (trade_id, partial_seq),
@@ -220,25 +219,25 @@ def _query(logger: TradeLogger, trade_id: int, partial_seq: int = 0) -> dict | N
 
 class TestSchema:
     def test_table_created(self, trade_logger: TradeLogger) -> None:
-        conn = trade_logger._get_connection()  # noqa: SLF001
+        conn = trade_logger._get_connection()
         tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         names = {row[0] for row in tables}
         assert "trades" in names
 
     def test_wal_mode_enabled(self, trade_logger: TradeLogger) -> None:
-        conn = trade_logger._get_connection()  # noqa: SLF001
+        conn = trade_logger._get_connection()
         mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
         assert mode == "wal"
 
     def test_ticket_index_exists(self, trade_logger: TradeLogger) -> None:
-        conn = trade_logger._get_connection()  # noqa: SLF001
+        conn = trade_logger._get_connection()
         indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
         names = {row[0] for row in indexes}
         assert "idx_ticket" in names
 
     def test_composite_primary_key(self, trade_logger: TradeLogger) -> None:
         """Inserting duplicate (trade_id, partial_sequence) must fail."""
-        conn = trade_logger._get_connection()  # noqa: SLF001
+        conn = trade_logger._get_connection()
         with pytest.raises(sqlite3.IntegrityError):
             conn.execute(
                 "INSERT INTO trades (trade_id, partial_sequence, entry_date, entry_time, "
@@ -452,7 +451,7 @@ class TestLogClose:
         assert row["net_pnl"] == pytest.approx(96.50)
 
     def test_swap_stored(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        """swap comes from PositionCacheEntry.swap, not the deal."""
+        """Swap comes from PositionCacheEntry.swap, not the deal."""
         pos_with_swap: PositionCacheEntry = {
             "ticket": 100_001,
             "symbol": SYMBOL,
@@ -646,12 +645,12 @@ class TestRRRFormula:
         pos_type: int,
         expected_rrr: float,
     ) -> None:
-        rrr = trade_logger._calculate_rrr(entry, exit_, sl, pos_type)  # noqa: SLF001
+        rrr = trade_logger._calculate_rrr(entry, exit_, sl, pos_type)
         assert rrr == pytest.approx(expected_rrr, rel=1e-5)
 
     def test_zero_risk_returns_zero(self, trade_logger: TradeLogger) -> None:
-        """sl == entry → risk = 0 → return 0 not ZeroDivisionError."""
-        rrr = trade_logger._calculate_rrr(1.10, 1.11, 1.10, 0)  # noqa: SLF001
+        """Sl == entry → risk = 0 → return 0 not ZeroDivisionError."""
+        rrr = trade_logger._calculate_rrr(1.10, 1.11, 1.10, 0)
         assert rrr == pytest.approx(0.0)
 
 
@@ -688,7 +687,7 @@ class TestSlippageCostFormula:
     ) -> None:
         mt5 = sys.modules["MetaTrader5"]
         mt5.symbol_info.return_value = EURUSD_SPEC
-        cost = trade_logger._calculate_slippage_cost(SYMBOL, volume, pos_type, spread)  # noqa: SLF001
+        cost = trade_logger._calculate_slippage_cost(SYMBOL, volume, pos_type, spread)
         assert cost == pytest.approx(expected, abs=1e-8)
 
 
@@ -717,11 +716,11 @@ class TestExitSpreadFormula:
         pos_type: int,
         result: float,
     ) -> None:
-        spread = trade_logger._calculate_exit_spread(actual, expected_p, pos_type)  # noqa: SLF001
+        spread = trade_logger._calculate_exit_spread(actual, expected_p, pos_type)
         assert spread == pytest.approx(result, abs=1e-8)
 
     def test_none_expected_returns_none(self, trade_logger: TradeLogger) -> None:
-        assert trade_logger._calculate_exit_spread(1.1, None) is None  # noqa: SLF001
+        assert trade_logger._calculate_exit_spread(1.1, None) is None
 
 
 #  get_open_trades_by_ticket_last_three (reconciliation)

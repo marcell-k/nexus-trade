@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import math
-
 import pytest
 
 from nexus_trade.core.constants import (
@@ -13,7 +11,7 @@ from nexus_trade.core.constants import (
     string_to_timeframe,
 )
 
-#  string_to_timeframe 
+#  string_to_timeframe
 
 
 class TestStringToTimeframe:
@@ -45,7 +43,7 @@ class TestStringToTimeframe:
         assert string_to_timeframe("") is None
 
 
-#  TIMEFRAME_TO_MINUTES 
+#  TIMEFRAME_TO_MINUTES
 
 
 class TestTimeframeToMinutes:

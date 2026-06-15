@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt
@@ -25,9 +24,14 @@ logger = logging.getLogger(__name__)
 _DEFAULT_CACHE_STALENESS_THRESHOLD: int = 60
 
 
-@dataclass(slots=True)
 class PositionRepository:
     """Thread- and process-safe position/order access layer."""
+
+    __slots__ = (
+        "_cache_staleness_threshold",
+        "_position_cache_lock",
+        "_shared_state",
+    )
 
     def __init__(
         self,

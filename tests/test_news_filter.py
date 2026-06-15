@@ -12,7 +12,7 @@ import pytest
 
 from nexus_trade.filters.news import NewsFilter, preprocess_calendar_file
 
-#  preprocess_calendar_file 
+#  preprocess_calendar_file
 
 BROKER_TZ = ZoneInfo("Etc/GMT-3")
 
@@ -81,7 +81,7 @@ class TestPreprocessCalendarFile:
         assert "currency" in df.columns
 
 
-#  NewsFilter.is_safe_to_trade 
+#  NewsFilter.is_safe_to_trade
 
 
 def _make_news_filter(
@@ -120,7 +120,7 @@ def _make_news_filter(
     # Inject pre-loaded calendar
     if not calendar_df.empty:
         calendar_df["time_strategy"] = calendar_df["time_broker"].dt.tz_convert(strategy_tz)
-    nf._set_calendar_cache(calendar_df, holidays)  # noqa: SLF001
+    nf._set_calendar_cache(calendar_df, holidays)
     return nf
 
 
@@ -149,7 +149,6 @@ class TestNewsFilterIsSafeToTrade:
         assert nf.is_safe_to_trade(check_time=now) is False
 
     def test_safe_after_buffer_expires(self) -> None:
-        from datetime import timedelta
 
         past_event = datetime.now(ZoneInfo("UTC")).replace(tzinfo=ZoneInfo("UTC")) - __import__("datetime").timedelta(
             hours=2
@@ -216,11 +215,8 @@ class TestNewsFilterIsSafeToTrade:
             )
 
         # No calendar loaded → fail_open=True means allow trading
-        nf._calendar_cache = None  # noqa: SLF001
-        assert nf.is_safe_to_trade() is True
-
-
-#  invalidate_cache 
+        with patch.object(nf, "_load_calendar", return_value=False):
+            assert nf.is_safe_to_trade() is True
 
 
 class TestInvalidateCache:
@@ -238,9 +234,9 @@ class TestInvalidateCache:
             }
         )
         nf = _make_news_filter(df, frozenset())
-        assert nf._calendar_cache is not None  # noqa: SLF001
+        assert nf._calendar_cache is not None
         nf.invalidate_cache()
-        assert nf._calendar_cache is None  # noqa: SLF001
-        assert nf._cache_timestamp is None  # noqa: SLF001
-        assert len(nf._holiday_dates) == 0  # noqa: SLF001
-        assert nf._high_impact_times_epoch is None  # noqa: SLF001
+        assert nf._calendar_cache is None
+        assert nf._cache_timestamp is None
+        assert len(nf._holiday_dates) == 0
+        assert nf._high_impact_times_epoch is None

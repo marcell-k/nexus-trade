@@ -9,24 +9,18 @@ import pytest
 from pydantic import ValidationError
 
 from nexus_trade.config.profile import (
-    AccountCfg,
-    AdaptiveSizingCfg,
     DrawdownThresholdCfg,
-    LimitsCfg,
     MetaLabelingCfg,
     RiskProfile,
-    StrategyCfg,
     load_profile,
 )
 from nexus_trade.config.strategy import (
     BaseStrategyParams,
     ExecutionConfig,
-    FiltersConfig,
     NewsFilterConfig,
     RiskConfig,
     SessionConfig,
     StrategyConfig,
-    TradingHoursConfig,
 )
 
 #  RiskProfile
