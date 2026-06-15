@@ -19,13 +19,13 @@ logs/
 # Venv
 .venv/
 
-src/nexus_trade/strategies
+src/nexus_trade/strategies/*
 !src/nexus_trade/strategies/base.py
 !src/nexus_trade/strategies/sma_crossover/
 
 # Profiles
-src/nexus_trade/config/profiles/
-!config/profiles/example.toml
+src/nexus_trade/config/profiles/*
+!src/nexus_trade/config/profiles/example.toml
 
 .ruff_cache/
 uv.lock

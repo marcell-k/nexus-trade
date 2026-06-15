@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────────────────────
+# NexusTrade Risk Profile — copy and rename, never commit yours
+# ─────────────────────────────────────────────────────────────
+
+[account]
+# Unique label used in log-directory names and orchestrator logs.
+type            = "EXAMPLE"
+# Reference balance for position-size calculations.
+initial_balance = 100_000
+
+# ── Global limits ─────────────────────────────────────────────
+[limits]
+max_total_positions    = 5
+max_daily_trades       = 10
+max_daily_drawdown_pct = 0.05   # 5 %
+max_drawdown_pct       = 0.10   # 10 %
+
+# ── Adaptive position sizing ──────────────────────────────────
+[adaptive_sizing]
+enabled = false
+scope   = "portfolio"   # "portfolio" | "strategy"
+
+[[adaptive_sizing.thresholds]]
+drawdown_pct    = 0.05
+risk_multiplier = 0.50
+
+[[adaptive_sizing.thresholds]]
+drawdown_pct    = 0.10
+risk_multiplier = 0.25
+
+# ── Strategies ────────────────────────────────────────────────
+# One block per module under src/nexus_trade/strategies/.
+# risk_pct: percentage of account balance risked per trade (1.0 = 1 %).
+
+[strategies.example_strategy]
+enabled  = true
+risk_pct = 1.0
+
+[strategies.example_strategy.meta_labeling]
+enabled         = false
+use_calibration = false
+min_confidence  = 0.0
+
+# [strategies.another_strategy]
+# enabled  = false
+# risk_pct = 0.5
+#
+# [strategies.another_strategy.meta_labeling]
+# enabled = false
