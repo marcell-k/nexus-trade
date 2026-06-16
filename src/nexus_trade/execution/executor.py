@@ -438,7 +438,7 @@ class OrderExecutor:
     def _fetch_market_data(self, symbol: str) -> _MarketData | None:
         """Single MT5 round-trip for all market state needed by entry paths."""
         raw_tick: MT5Tick | None = mt.symbol_info_tick(symbol)
-        symbol_info: SymbolInfo = mt.symbol_info(symbol)
+        symbol_info = mt.symbol_info(symbol)
         if raw_tick is None or symbol_info is None:
             logger.error(msg="Fetch market data error")
             return None

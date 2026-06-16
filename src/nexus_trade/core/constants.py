@@ -97,6 +97,6 @@ TIMEFRAME_STRING_MAP: dict[str, TimeFrame] = {
 }
 
 
-def string_to_timeframe(tf_str: str) -> TimeFrame | None:
+def string_to_timeframe(tf_str: str) -> TimeFrame:
     """Return the TimeFrame enum for *tf_str*, or ``None`` if unknown."""
-    return TIMEFRAME_STRING_MAP.get(tf_str.upper())
+    return TIMEFRAME_STRING_MAP[tf_str.upper()]

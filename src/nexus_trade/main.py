@@ -16,7 +16,7 @@ from nexus_trade.utils.format import log_section_header
 from nexus_trade.utils.system import WindowsInhibitor
 
 CONFIG_DIR: Final[Path] = Path("~/.config/mt5-trading").expanduser()
-PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent
+PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 logger = logging.getLogger(__name__)
 
 

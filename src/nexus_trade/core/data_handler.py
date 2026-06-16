@@ -102,20 +102,19 @@ class DataHandler:
         strategy_config = STRATEGY_CONFIG_REGISTRY.get_config(strategy_name)
         symbol = strategy_config["symbol"]
         timeframe_mt5 = string_to_timeframe(strategy_config["timeframe"])
-        cache_key = (symbol, timeframe_mt5)
-
+        cache_key: tuple[str, int] = (symbol, int(timeframe_mt5))
         strategy_tz = STRATEGY_CONFIG_REGISTRY.get_tz(strategy_name)
         now_broker = datetime.now(self.broker_tz)
         cached_metadata = self._latest_bar_cache.get(cache_key)
 
         # Predictive skip: bar still forming
-        if self._should_skip_mt5_call(cached_metadata, now_broker):
+        if cached_metadata is not None and self._should_skip_mt5_call(cached_metadata, now_broker):
             cached = self._return_cached_window(cache_key, strategy_config)
             if cached is not None and len(cached) > 0:
                 return cached
 
         # Determine cache strategy: same bar, incremental, or full refresh
-        if not (cached_metadata and cached_metadata.get("cache_seeded", False)):
+        if not (cached_metadata and cached_metadata.cache_seeded):
             return self._full_refresh_bars(symbol, strategy_config, cache_key, strategy_tz)
 
         should_skip, bars_elapsed = self._check_cache_state(cached_metadata, now_broker)
@@ -164,8 +163,8 @@ class DataHandler:
         # No complete bars available
         if len(new_bar_df) == 0:
             if cached_metadata := self._latest_bar_cache.get(cache_key):
-                cached_metadata["next_bar_complete_at"] = cached_metadata["bar_time"] + pd.Timedelta(
-                    minutes=cached_metadata["timeframe_minutes"], seconds=2
+                cached_metadata.next_bar_complete_at = cached_metadata.bar_time + pd.Timedelta(
+                    minutes=cached_metadata.timeframe_minutes, seconds=2
                 )
             return self._return_cached_window(cache_key, strategy_config)
 
@@ -224,12 +223,15 @@ class DataHandler:
 
     def _filter_complete_bars(self, df: pd.DataFrame, strategy_config: RawStrategyConfig) -> pd.DataFrame:
         """Filter out incomplete bars (bars still forming)."""
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise TypeError("DataFrame index must be a DatetimeIndex")
         timeframe_minutes = strategy_config.get("timeframe_minutes")
         now_strategy = datetime.now(tz=df.index.tz)
 
         bar_close_times = df.index + pd.Timedelta(minutes=timeframe_minutes)
         tolerance = pd.Timedelta(seconds=2)
-        mask_complete = bar_close_times <= (now_strategy + tolerance)
+        cutoff_time = pd.Timestamp(now_strategy) + tolerance
+        mask_complete = bar_close_times <= cutoff_time
 
         return df[mask_complete]
 
@@ -245,6 +247,8 @@ class DataHandler:
         if not strategy_config.get("filter_enabled", False) or not sessions:
             return df
 
+        if not isinstance(df.index, pd.DatetimeIndex):
+            raise TypeError("DataFrame index must be a DatetimeIndex")
         bar_minutes = df.index.hour * 60 + df.index.minute
         combined_mask = np.zeros(len(df), dtype=bool)
 

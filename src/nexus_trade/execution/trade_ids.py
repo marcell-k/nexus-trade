@@ -44,6 +44,13 @@ class TradeIDSequenceManager:
         if self._conn is None:
             self._connect()
 
+    def _get_conn(self) -> sqlite3.Connection:
+        """Return active connection or raise RuntimeError if unavailable."""
+        self._ensure_connected()
+        if self._conn is None:
+            raise RuntimeError("Database connection is not available.")
+        return self._conn
+
     def _reconnect(self) -> None:
         """Close stale connection and reconnect."""
         if self._conn is not None:
@@ -138,19 +145,19 @@ class TradeIDSequenceManager:
 
     def _init_sequence_table(self) -> None:
         """Create sequence table with singleton constraint."""
-        self._ensure_connected()
+        conn = self._get_conn()
         try:
-            self._conn.execute("""
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS trade_id_seq (
                     id INTEGER PRIMARY KEY CHECK (id = 1),
                     last_trade_id INTEGER NOT NULL DEFAULT 0
                 )
             """)
-            self._conn.execute("""
+            conn.execute("""
                 INSERT OR IGNORE INTO trade_id_seq (id, last_trade_id)
                 VALUES (1, 0)
             """)
-            self._conn.commit()
+            conn.commit()
             logger.debug("TradeIDInit ok=1")
         except sqlite3.Error as e:
             self._rollback_quietly()
@@ -189,17 +196,17 @@ class TradeIDSequenceManager:
 
     def get_current_id(self) -> int:
         """Get current counter value without incrementing."""
-        self._ensure_connected()
+        conn = self._get_conn()
         row = None
 
         try:
-            row = self._conn.execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
+            row = conn.execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
         except (sqlite3.InterfaceError, sqlite3.ProgrammingError) as e:
             logger.warning(f"TradeIDReconnect reason=read_conn_err | err={e}")
             self._reconnect()
             try:
                 # Retry the query once after reconnecting
-                row = self._conn.execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
+                row = conn.execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
             except sqlite3.Error as retry_e:
                 logger.error(f"TradeIDReadFail after reconnect err={retry_e}")
                 raise retry_e from e
@@ -216,6 +223,7 @@ class TradeIDSequenceManager:
         Reset sequence counter (testing/maintenance only).
 
         WARNING: Can cause ID collisions if reset to lower value.
+
         """
         if new_value < 0:
             raise ValueError(f"Value must be non-negative, got {new_value}")

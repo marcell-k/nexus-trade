@@ -15,6 +15,7 @@ class EntryRequest:
     - bracket: Uses buy_stop, sell_stop, buy_sl, sell_sl (ignores signal, sl, tp)
     """
 
+    strategy_name: str
     order_type: str
     symbol: str
     volume: float
@@ -35,7 +36,6 @@ class EntryRequest:
 
     # Metadata
     comment: str = ""
-    strategy_name: str | None = None
     expiration_time: str | None = None
 
     def __post_init__(self) -> None:
