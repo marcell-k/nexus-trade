@@ -27,17 +27,17 @@ from nexus_trade.core.models import (
     NormalizedPosition,
     PendingTicket,
     Position,
-    PositionType,
     StandardPendingTicket,
     cache_entry_to_position,
 )
 from nexus_trade.core.repository import PositionRepository
-from nexus_trade.core.state import (
+from nexus_trade.core.types import (
     EntryMetadata,
     GlobalRiskPolicy,
+    MT5Tick,
     OrderSnapshot,
     PositionCacheEntry,
-    SharedState,
+    PositionType,
 )
 from nexus_trade.execution.executor import OrderExecutor
 from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequest
@@ -56,7 +56,8 @@ if TYPE_CHECKING:
     from nexus_trade.config.account import AccountConfig
     from nexus_trade.config.profile import MetaLabelingCfg
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig, StrategyOrderType
-    from nexus_trade.core.protocols import AtomicInt, MT5Tick, ProcessLock, StrategyProtocol, XGBClassifierProtocol
+    from nexus_trade.core.protocols import AtomicInt, ProcessLock, StrategyProtocol, XGBClassifierProtocol
+    from nexus_trade.core.state import SharedState
     from nexus_trade.tools.calibrator import ProbabilityCalibrator
 
 

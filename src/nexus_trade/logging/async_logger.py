@@ -5,7 +5,7 @@ import threading
 import time
 from queue import Empty, Full, Queue
 
-from nexus_trade.core.state import ReconciledTrade
+from nexus_trade.core.types import ReconciledTrade
 from nexus_trade.logging.logger import CloseData, FillData, PartialCloseData, TradeLogger
 
 logger = logging.getLogger(__name__)

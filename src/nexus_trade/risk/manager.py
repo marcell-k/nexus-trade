@@ -10,12 +10,11 @@ from typing import TYPE_CHECKING
 import MetaTrader5 as mt
 
 from nexus_trade.config.risk import SYSTEM_TIMINGS
-from nexus_trade.core.state import (
+from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
+from nexus_trade.core.types import (
     GlobalRiskPolicy,
-    SharedState,
     TTLCache,
 )
-from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
 from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
 
@@ -25,6 +24,7 @@ if TYPE_CHECKING:
     from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, StrategyConfig
     from nexus_trade.core.data_handler import DataHandler
     from nexus_trade.core.protocols import AccountInfo, AtomicInt, StrategyRunnerProtocol, SymbolInfo
+    from nexus_trade.core.state import SharedState
 
 
 logger = logging.getLogger(__name__)

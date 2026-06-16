@@ -33,11 +33,11 @@ if TYPE_CHECKING:
     from nexus_trade.config.account import AccountConfig
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.protocols import AccountInfo, AtomicInt, ProcessLock
-    from nexus_trade.core.state import (
+    from nexus_trade.core.state import SharedState
+    from nexus_trade.core.types import (
         GlobalRiskPolicy,
         OrderSnapshot,
         PositionCacheEntry,
-        SharedState,
     )
 
 

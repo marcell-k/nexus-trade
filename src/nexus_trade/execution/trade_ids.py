@@ -216,10 +216,6 @@ class TradeIDSequenceManager:
         Reset sequence counter (testing/maintenance only).
 
         WARNING: Can cause ID collisions if reset to lower value.
-
-        Args:
-            new_value: New counter value (default: 0)
-
         """
         if new_value < 0:
             raise ValueError(f"Value must be non-negative, got {new_value}")

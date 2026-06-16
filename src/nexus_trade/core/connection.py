@@ -1,6 +1,7 @@
 import logging
 import time
 from enum import Enum
+from typing import Final
 
 import MetaTrader5 as mt5
 from MetaTrader5 import AccountInfo
@@ -18,7 +19,7 @@ class ConnectionState(Enum):
 
 
 class MT5Connection:
-    MAX_BACKOFF_SECONDS: int = 30
+    BACKOFF_SECONDS: Final[list[int]] = [1, 2, 4, 8, 16]
 
     def __init__(
         self, config: AccountConfig, max_reconnection_attempts: int = 5, connection_check_ttl: int = 60
@@ -49,14 +50,16 @@ class MT5Connection:
             ):
                 logger.warning(f"ConnInitFail n={attempt + 1}/{max_retries} | err={mt5.last_error()}")
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (2**attempt))
+                    connect_idx = min(attempt, len(self.BACKOFF_SECONDS) - 1)
+                    time.sleep(retry_delay * self.BACKOFF_SECONDS[connect_idx])
                 continue
 
             account_info = mt5.account_info()
             if not self._validate_account(account_info):
                 mt5.shutdown()
                 if attempt < max_retries - 1:
-                    time.sleep(retry_delay * (2**attempt))
+                    connect_idx = min(attempt, len(self.BACKOFF_SECONDS) - 1)
+                    time.sleep(retry_delay * self.BACKOFF_SECONDS[connect_idx])
                 continue
 
             logger.debug("ConnOK")
@@ -76,7 +79,8 @@ class MT5Connection:
             self._set_disconnected()
             return False
 
-        backoff_seconds = min(2 ** (self.reconnection_attempts - 1), self.MAX_BACKOFF_SECONDS)
+        lookup_index = min(self.reconnection_attempts - 1, len(self.BACKOFF_SECONDS) - 1)
+        backoff_seconds = self.BACKOFF_SECONDS[lookup_index]
         logger.warning(
             f"ReconnStart n={self.reconnection_attempts}/{self.max_reconnection_attempts} | backoff={backoff_seconds}s"
         )

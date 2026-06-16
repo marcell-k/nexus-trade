@@ -55,7 +55,7 @@ def resolve_env_path(env_arg: str) -> Path | None:
 
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="MT5 Trading System Orchestrator")
-    parser.add_argument(
+    _ = parser.add_argument(
         "--env",
         type=str,
         required=True,

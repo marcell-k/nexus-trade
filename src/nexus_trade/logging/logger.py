@@ -25,12 +25,12 @@ import pandas as pd
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
 from nexus_trade.core.models import NormalizedPosition
 from nexus_trade.core.protocols import MT5Deal
-from nexus_trade.core.state import (
+from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
+from nexus_trade.core.types import (
     PartialClosePositionSnapshot,
     PositionCacheEntry,
     ReconciledTrade,
 )
-from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
 from nexus_trade.utils.format import format_price_display
 
 logger = logging.getLogger(__name__)
