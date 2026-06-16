@@ -21,7 +21,7 @@ from nexus_trade.core.constants import (
 )
 from nexus_trade.core.models import NormalizedPosition
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
-from nexus_trade.core.state import OrderSnapshot, PositionCacheEntry, normalize_order
+from nexus_trade.core.state import normalize_order
 from nexus_trade.core.symbol import SymbolSpec, SymbolSpecCache
 from nexus_trade.execution.request import (
     EntryRequest,
@@ -39,7 +39,8 @@ if TYPE_CHECKING:
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.models import Position
-    from nexus_trade.core.protocols import MT5Tick, SymbolInfo
+    from nexus_trade.core.protocols import SymbolInfo
+    from nexus_trade.core.types import MT5Tick, OrderSnapshot, PositionCacheEntry
 
 from nexus_trade.core.models import Tick
 

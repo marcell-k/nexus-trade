@@ -6,19 +6,9 @@ if TYPE_CHECKING:
     import numpy as np
     import pandas as pd
 
+    from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.models import Position
     from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequestResult
-
-
-class MT5Tick(Protocol):
-    time: int
-    bid: float
-    ask: float
-    last: float
-    volume: int
-    time_msc: int
-    flags: int
-    volume_real: float
 
 
 @runtime_checkable
@@ -75,6 +65,10 @@ class StrategyRunnerProtocol(Protocol):
     """Structural protocol for ``StrategyRunner`` — consumed by ``RiskManager`` to avoid import cycles."""
 
     local_position_count: int
+
+
+class ConfigModule(Protocol):
+    def get_config(self) -> StrategyConfig[BaseStrategyParams]: ...
 
 
 class StrategyProtocol(Protocol):

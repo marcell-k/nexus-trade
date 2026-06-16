@@ -2,15 +2,10 @@ import logging
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, cast
 
 import MetaTrader5 as mt
 
 from nexus_trade.core.constants import OrderFilling
-
-if TYPE_CHECKING:
-    from nexus_trade.core.protocols import SymbolInfo
-
 
 logger = logging.getLogger(__name__)
 
@@ -53,34 +48,33 @@ class SymbolSpec:
         if raw is None:
             logger.error(f"SymbolInfoFail sym={symbol} | reason=mt5_returned_none")
             return None
-        info: SymbolInfo = cast("SymbolInfo", raw)
         return cls(
             symbol=symbol,
-            description=str(info.description),
-            contract_size=float(info.trade_contract_size),
-            point=float(info.point),
-            digits=int(info.digits),
-            volume_min=float(info.volume_min),
-            volume_max=float(info.volume_max),
-            volume_step=float(info.volume_step),
-            bid=float(info.bid),
-            ask=float(info.ask),
-            spread=int(info.spread),
-            spread_float=bool(info.spread_float),
-            tick_size=float(info.trade_tick_size),
-            tick_value=float(info.trade_tick_value),
-            tick_value_profit=float(info.trade_tick_value_profit),
-            tick_value_loss=float(info.trade_tick_value_loss),
-            currency_base=str(info.currency_base),
-            currency_profit=str(info.currency_profit),
-            currency_margin=str(info.currency_margin),
-            trade_mode=int(info.trade_mode),
-            filling_mode=int(info.filling_mode),
-            stops_level=int(info.trade_stops_level),
-            freeze_level=int(info.trade_freeze_level),
-            swap_long=float(info.swap_long),
-            swap_short=float(info.swap_short),
-            swap_mode=int(info.swap_mode),
+            description=str(raw.description),
+            contract_size=float(raw.trade_contract_size),
+            point=float(raw.point),
+            digits=int(raw.digits),
+            volume_min=float(raw.volume_min),
+            volume_max=float(raw.volume_max),
+            volume_step=float(raw.volume_step),
+            bid=float(raw.bid),
+            ask=float(raw.ask),
+            spread=int(raw.spread),
+            spread_float=bool(raw.spread_float),
+            tick_size=float(raw.trade_tick_size),
+            tick_value=float(raw.trade_tick_value),
+            tick_value_profit=float(raw.trade_tick_value_profit),
+            tick_value_loss=float(raw.trade_tick_value_loss),
+            currency_base=str(raw.currency_base),
+            currency_profit=str(raw.currency_profit),
+            currency_margin=str(raw.currency_margin),
+            trade_mode=int(raw.trade_mode),
+            filling_mode=int(raw.filling_mode),
+            stops_level=int(raw.trade_stops_level),
+            freeze_level=int(raw.trade_freeze_level),
+            swap_long=float(raw.swap_long),
+            swap_short=float(raw.swap_short),
+            swap_mode=int(raw.swap_mode),
             asset_class=asset_class,
         )
 

@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import importlib
 import threading
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 from zoneinfo import ZoneInfo
 
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES, string_to_timeframe
-from nexus_trade.core.state import RawStrategyConfig
+from nexus_trade.core.types import RawStrategyConfig
 
 if TYPE_CHECKING:
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
+    from nexus_trade.core.protocols import ConfigModule
 
 
 class StrategyConfigRegistry:
@@ -27,13 +28,17 @@ class StrategyConfigRegistry:
 
     def get_strategy_config(self, strategy_name: str) -> StrategyConfig[BaseStrategyParams]:
         with self._lock:
-            self.get_config(strategy_name)
+            _ = self.get_config(strategy_name)
             return self._full_configs[strategy_name]
 
     def get_config(self, strategy_name: str) -> RawStrategyConfig:
         with self._lock:
             if strategy_name not in self._configs:
-                module = importlib.import_module(f"nexus_trade.strategies.{strategy_name}.config")
+                module = cast(
+                    "ConfigModule",
+                    cast("object", importlib.import_module(f"nexus_trade.strategies.{strategy_name}.config")),
+                )
+
                 cfg: StrategyConfig[BaseStrategyParams] = module.get_config()
                 self._full_configs[strategy_name] = cfg
                 self._configs[strategy_name] = self._parse_config_from_obj(cfg)

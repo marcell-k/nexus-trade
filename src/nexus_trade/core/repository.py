@@ -12,12 +12,8 @@ from nexus_trade.core.models import NormalizedPosition
 
 if TYPE_CHECKING:
     from nexus_trade.core.protocols import ProcessLock
-from nexus_trade.core.state import (
-    OrderSnapshot,
-    PositionCacheEntry,
-    SharedState,
-    normalize_order,
-)
+    from nexus_trade.core.types import OrderSnapshot, PositionCacheEntry
+from nexus_trade.core.state import SharedState, normalize_order
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +23,7 @@ _DEFAULT_CACHE_STALENESS_THRESHOLD: int = 60
 class PositionRepository:
     """Thread- and process-safe position/order access layer."""
 
-    __slots__ = (
+    __slots__: tuple[str, ...] = (
         "_cache_staleness_threshold",
         "_position_cache_lock",
         "_shared_state",

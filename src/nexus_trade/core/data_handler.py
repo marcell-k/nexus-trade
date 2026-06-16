@@ -1,20 +1,29 @@
-from datetime import UTC, datetime
+from dataclasses import dataclass
+from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import MetaTrader5 as mt5
 import numpy as np
 import pandas as pd
 
-from nexus_trade.core.constants import TIMEFRAME_TO_MINUTES, string_to_timeframe
+from nexus_trade.core.constants import TIMEFRAME_TO_MINUTES, TimeFrame, string_to_timeframe
 from nexus_trade.core.models import Tick
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
-from nexus_trade.core.state import RawStrategyConfig
+from nexus_trade.core.types import RawStrategyConfig
+
+
+@dataclass(slots=True)
+class _BarCacheEntry:
+    bar_time: pd.Timestamp
+    timeframe_minutes: int
+    next_bar_complete_at: pd.Timestamp
+    cache_seeded: bool = False
 
 
 class DataHandler:
     def __init__(self, broker_tz: ZoneInfo) -> None:
         self.broker_tz: ZoneInfo = broker_tz
-        self._latest_bar_cache: dict[tuple[str, int], dict[str, object]] = {}
+        self._latest_bar_cache: dict[tuple[str, int], _BarCacheEntry] = {}
         self._bar_rolling_windows: dict[tuple[str, int], pd.DataFrame | None] = {}
 
     def _get_cached_window(self, cache_key: tuple[str, int]) -> pd.DataFrame | None:
@@ -45,12 +54,12 @@ class DataHandler:
         tolerance_seconds = 2
         next_bar_complete_at = bar_time_broker + pd.Timedelta(minutes=timeframe_minutes, seconds=tolerance_seconds)
 
-        self._latest_bar_cache[cache_key] = {
-            "bar_time": bar_time_broker,
-            "timeframe_minutes": timeframe_minutes,
-            "next_bar_complete_at": next_bar_complete_at,
-            "cache_seeded": True,
-        }
+        self._latest_bar_cache[cache_key] = _BarCacheEntry(
+            bar_time=bar_time_broker,
+            timeframe_minutes=timeframe_minutes,
+            next_bar_complete_at=next_bar_complete_at,
+            cache_seeded=True,
+        )
 
     def _create_tz_aware_dataframe(self, rates: np.ndarray, strategy_tz: ZoneInfo) -> pd.DataFrame:
         """Create timezone-aware DataFrame from MT5 rates array."""
@@ -72,13 +81,12 @@ class DataHandler:
         # Ensure chronological order in case MT5 returns newest-first.
         return df.sort_index()
 
-    def _check_cache_state(self, cached_metadata: dict[str, object], now_broker: datetime) -> tuple[bool, float]:
+    def _check_cache_state(self, cached_metadata: _BarCacheEntry, now_broker: datetime) -> tuple[bool, float]:
         """Return (should_skip, bars_elapsed). should_skip=True means current bar still forming."""
-        next_complete_at = cached_metadata.get("next_bar_complete_at")
-        if next_complete_at is not None and now_broker < next_complete_at:
+        if now_broker < cached_metadata.next_bar_complete_at:
             return True, 0.0
-        bar_close_time = cached_metadata["bar_time"] + pd.Timedelta(minutes=cached_metadata["timeframe_minutes"])
-        bars_elapsed = (now_broker - bar_close_time).total_seconds() / 60.0 / cached_metadata["timeframe_minutes"]
+        bar_close_time = cached_metadata.bar_time + pd.Timedelta(minutes=cached_metadata.timeframe_minutes)
+        bars_elapsed = (now_broker - bar_close_time).total_seconds() / 60.0 / cached_metadata.timeframe_minutes
         return False, bars_elapsed
 
     def get_latest_bars(self, strategy_name: str) -> pd.DataFrame | None:
@@ -123,12 +131,11 @@ class DataHandler:
 
         return self._full_refresh_bars(symbol, strategy_config, cache_key, strategy_tz)
 
-    def _should_skip_mt5_call(self, cached_metadata: dict[str, object] | None, now_broker: datetime) -> bool:
+    def _should_skip_mt5_call(self, cached_metadata: _BarCacheEntry | None, now_broker: datetime) -> bool:
         """Evaluate whether current bar is still forming."""
         if cached_metadata is None:
             return False
-        next_complete_at = cached_metadata.get("next_bar_complete_at")
-        return next_complete_at is not None and now_broker < next_complete_at
+        return now_broker < cached_metadata.next_bar_complete_at
 
     def _fetch_and_append_new_bar(
         self,
@@ -176,7 +183,7 @@ class DataHandler:
         self._bar_rolling_windows[cache_key] = updated_df.tail(cache_capacity).copy()
 
         new_bar_time_broker = latest_complete_bar.index[0].tz_convert(self.broker_tz)
-        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[timeframe_mt5])
+        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)])
 
         self._update_cache_metadata(cache_key, new_bar_time_broker, timeframe_minutes)
 
@@ -201,7 +208,7 @@ class DataHandler:
         df_complete = self._filter_complete_bars(df_raw, strategy_config)
 
         # Cache latest fetched bar first to avoid repeated MT5 polling while a bar forms.
-        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[timeframe_mt5])
+        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)])
 
         if len(df_complete) == 0:
             self._bar_rolling_windows[cache_key] = pd.DataFrame(columns=df_raw.columns)
@@ -226,26 +233,11 @@ class DataHandler:
 
         return df[mask_complete]
 
-    def get_current_tick(self, symbol: str, strategy_name: str | None = None) -> Tick | None:
+    def get_current_tick(self, symbol: str) -> Tick | None:
         tick = mt5.symbol_info_tick(symbol)
         if tick is None:
             return None
-
-        tick_time_broker = datetime.fromtimestamp(tick.time, tz=self.broker_tz)
-        tick_time_utc = tick_time_broker.astimezone(UTC)
-
-        result = {
-            "bid": tick.bid,
-            "ask": tick.ask,
-            "last": tick.last,
-            "time": tick.time,
-            "time_utc": tick_time_utc,
-        }
-
-        if strategy_name:
-            result["time_strategy"] = tick_time_broker.astimezone(STRATEGY_CONFIG_REGISTRY.get_tz(strategy_name))
-
-        return result
+        return Tick.from_mt5(tick)
 
     def _filter_session_hours(self, df: pd.DataFrame, strategy_config: RawStrategyConfig) -> pd.DataFrame:
         """Filter bars to trading session hours. Handles midnight-spanning sessions (e.g., 23:00-01:00)."""

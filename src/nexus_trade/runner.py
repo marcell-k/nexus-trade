@@ -122,11 +122,11 @@ class StrategyRunner:
         self._meta_labeling: MetaLabelingCfg = config.meta_labeling
         self.strategy_offset_seconds: float = config.strategy_offset_seconds
 
-        self.connection: MT5Connection | None = None
-        self.data_handler: DataHandler | None = None
-        self.trade_id_manager: TradeIDSequenceManager | None = None
-        self.executor: OrderExecutor | None = None
-        self.risk_manager: RiskManager | None = None
+        self.connection: MT5Connection
+        self.data_handler: DataHandler
+        self.trade_id_manager: TradeIDSequenceManager
+        self.executor: OrderExecutor
+        self.risk_manager: RiskManager
 
         self.strategy: StrategyProtocol | None = None
 
@@ -172,7 +172,7 @@ class StrategyRunner:
         self.next_entry_time: datetime | None = None
         self.next_exit_time: datetime | None = None
 
-        self._symbol_tick_cache: dict[str, object] = {}
+        self._symbol_tick_cache: dict[str, MT5Tick] = {}
         self._cleanup_done: bool = False
 
         self.exit_log_data_cls: type[ExitLogData] = ExitLogData
@@ -656,8 +656,10 @@ class StrategyRunner:
                 expected_exit_price=None,
                 opening_sl=metadata.get("opening_sl"),
                 exit_trigger="EXTERNAL_CLOSE",
-                entry_price=snapshot.price_open,
-                expected_entry_price=metadata.get("expected_entry_price"),
+                entry_price=snapshot["price_open"],
+                expected_entry_price=metadata.get("expected_entry_price")
+                if metadata.get("expected_entry_price") is not None
+                else snapshot["price_open"],
             )
             self.trade_logger.log_close(close_data)
             logger.info(f"{self.strategy_name}: EXTERNAL CLOSE | id={trade_id} | t={ticket}")
@@ -1065,10 +1067,10 @@ class StrategyRunner:
         trade_id: int,
         position: PositionCacheEntry,
         expected_exit_price: float | None,
-        opening_sl: float,
+        opening_sl: float | None,
         exit_trigger: str,
         entry_price: float,
-        expected_entry_price: float,
+        expected_entry_price: float | None,
     ) -> CloseData:
         return CloseData(
             trade_id=trade_id,
@@ -1086,9 +1088,7 @@ class StrategyRunner:
         return PartialCloseData(
             trade_id=trade_id,
             position=NormalizedPosition.from_mt5(position).to_partial_snapshot(),
-            closed_volume=data.executed_volume
-            if hasattr(data, "executed_volume") and data.executed_volume is not None
-            else 0.0,
+            closed_volume=data.executed_volume if data.executed_volume is not None else 0.0,
             remaining_volume=remaining_volume,
             expected_exit_price=data.expected_exit_price,
             opening_sl=data.opening_sl,

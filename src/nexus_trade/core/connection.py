@@ -3,9 +3,9 @@ import time
 from enum import Enum
 
 import MetaTrader5 as mt5
+from MetaTrader5 import AccountInfo
 
 from nexus_trade.config.account import AccountConfig
-from nexus_trade.core.protocols import AccountInfo
 
 logger = logging.getLogger(__name__)
 

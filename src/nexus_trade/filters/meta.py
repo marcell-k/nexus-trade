@@ -3,10 +3,12 @@ from __future__ import annotations
 import importlib
 import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    import pandas as pd
 
     from nexus_trade.config.profile import MetaLabelingCfg
     from nexus_trade.core.protocols import XGBClassifierProtocol
@@ -66,7 +68,7 @@ def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> Probabil
         return None
 
 
-def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callable[..., object] | None:
+def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callable[[pd.DataFrame], pd.DataFrame] | None:
     if not cfg.enabled:
         return None
 
@@ -76,9 +78,8 @@ def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callabl
         logger.warning(f"{strategy_name}: Failed to import features module | err={error}")
         return None
 
-    extractor = getattr(module, "extract_features", None)
-    if extractor is None or not callable(extractor):
-        logger.error(f"{strategy_name}: features.py exists but no extract_features function | fn=missing")
+    extractor: object = getattr(module, "extract_features", None)
+    if not callable(extractor):
+        logger.error(...)
         return None
-
-    return extractor
+    return cast("Callable[[pd.DataFrame], pd.DataFrame]", extractor)

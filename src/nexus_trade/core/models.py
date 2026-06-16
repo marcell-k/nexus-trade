@@ -1,18 +1,17 @@
-from enum import Enum
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
 
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 
-from nexus_trade.core.constants import OrderType
-from nexus_trade.core.protocols import MT5Tick
-from nexus_trade.core.state import PartialClosePositionSnapshot, PositionCacheEntry
+from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType
+
+if TYPE_CHECKING:
+    from nexus_trade.core.constants import OrderType
+    from nexus_trade.core.types import MT5Tick
 
 _CFG = ConfigDict(frozen=True, strict=True, extra="forbid")
-
-
-class PositionType(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
 
 
 @dataclass(slots=True, config=_CFG)
@@ -48,7 +47,7 @@ class NormalizedPosition:
     time: int
 
     @classmethod
-    def from_mt5(cls, pos: object) -> "NormalizedPosition":
+    def from_mt5(cls, pos: object) -> NormalizedPosition:
         """Convert MT5 position namedtuple."""
         return cls(
             ticket=int(getattr(pos, "ticket", 0)),
@@ -138,7 +137,7 @@ class Tick:
     time_msc: int  # milliseconds UTC
 
     @classmethod
-    def from_mt5(cls, raw: MT5Tick) -> "Tick":
+    def from_mt5(cls, raw: MT5Tick) -> Tick:
         """Construct from the namedtuple returned by symbol_info_tick()."""
         return cls(
             time=raw.time,
@@ -199,5 +198,6 @@ class ExitLogData:
     expected_entry_price: float
     opening_sl: float
     entry_price: float
+    executed_volume: float | None = None
     closed_volume: float | None = None
     deal_id: int | None = None

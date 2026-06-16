@@ -56,10 +56,10 @@ class CloseData:
     trade_id: int
     position: PositionCacheEntry
     expected_exit_price: float | None
-    opening_sl: float
+    opening_sl: float | None
     exit_trigger: str
     entry_price: float
-    expected_entry_price: float
+    expected_entry_price: float | None
 
 
 @dataclass(slots=True)
