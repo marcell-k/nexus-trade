@@ -181,7 +181,7 @@ class EntryMetadata(TypedDict, total=False):
     ticket: int | None
     position_snapshot: PositionCacheEntry | None
     expected_entry_price: float
-    opening_sl: float
+    opening_sl: float | None
     expected_buy_entry: float | None
     expected_sell_entry: float | None
     buy_sl: float | None

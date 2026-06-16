@@ -564,7 +564,6 @@ class StrategyRunner:
             "submission_time": submission_time,
             "volume_multiplier": volume_multiplier,
             "ticket": None,
-            "expected_entry_price": None,
             "opening_sl": None,
             "position_snapshot": None,
         }
@@ -679,7 +678,23 @@ class StrategyRunner:
 
     def _handle_new_fill(self, pos: Position) -> None:
         ticket = pos.ticket
-        trade_id = self.ticket_to_trade_id.get(ticket) or self._resolve_pending_ticket(pos)
+        trade_id = self.ticket_to_trade_id.get(ticket)
+        if trade_id is None:
+            trade_id = self._resolve_pending_ticket(pos)
+        elif self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None:
+            resolved = self._resolve_pending_ticket(pos)
+            if resolved is not None:
+                trade_id = resolved
+            else:
+                meta = self.entry_metadata.get(trade_id)
+                if meta is not None:
+                    meta["expected_entry_price"] = pos.price_open
+                    if meta.get("opening_sl") is None:
+                        meta["opening_sl"] = pos.sl
+                logger.warning(
+                    f"{self.strategy_name:<9}: BracketResolveFail t={ticket} | "
+                    f"action=patch_fill_price | px={pos.price_open}"
+                )
         if trade_id is None:
             trade_id = self._handle_orphaned_fill(ticket, pos)
             if trade_id is None:
