@@ -88,18 +88,6 @@ class SymbolSpec:
         return [mode for bit, mode in bit_map if self.filling_mode & bit]
 
 
-_symbol_cache: dict[str, SymbolSpec | None] = {}
-_symbol_lock = threading.Lock()
-
-
-def get_symbol_spec(symbol: str, asset_class: str = "unknown") -> SymbolSpec | None:
-    if symbol not in _symbol_cache:
-        with _symbol_lock:
-            if symbol not in _symbol_cache:
-                _symbol_cache[symbol] = SymbolSpec.from_mt5(symbol, asset_class)
-    return _symbol_cache[symbol]
-
-
 @dataclass(frozen=True, slots=True)
 class _CachedEntry:
     spec: SymbolSpec
@@ -126,15 +114,43 @@ class SymbolSpecCache:
                 return entry.spec, entry.filling
         return None
 
+    def get_spec(self, symbol: str, asset_class: str = "unknown") -> SymbolSpec | None:
+        """Return spec only, using the same TTL-backed cache as get_or_fetch."""
+        with self._lock:
+            entry = self._cache.get(symbol)
+            if entry is not None and entry.is_valid(self.ttl):
+                return entry.spec
+        spec = SymbolSpec.from_mt5(symbol, asset_class)
+        if spec is None:
+            return None
+        filling_modes = spec.filling_modes()
+        if not filling_modes:
+            return None
+        with self._lock:
+            self._cache[symbol] = _CachedEntry(spec, filling_modes[0], time.time())
+        return spec
+
     def get_or_fetch(self, symbol: str) -> tuple[SymbolSpec, OrderFilling] | None:
-        """Return cached entry or fetch from MT5."""
+        """Return cached (spec, filling) or fetch from MT5."""
         cached = self.get(symbol)
         if cached is not None:
             return cached
-        spec = get_symbol_spec(symbol)
+        spec = SymbolSpec.from_mt5(symbol)
         if spec is None:
             return None
-        filling = spec.filling_modes()[0]
+        filling_modes = spec.filling_modes()
+        if not filling_modes:
+            return None
+        filling = filling_modes[0]
         with self._lock:
             self._cache[symbol] = _CachedEntry(spec, filling, time.time())
         return spec, filling
+
+    def invalidate(self, symbol: str) -> None:
+        """Evict a single symbol — forces re-fetch on next access."""
+        with self._lock:
+            self._cache.pop(symbol, None)
+
+
+# Module-level singleton — one TTL-backed cache per process.
+SYMBOL_SPEC_CACHE: SymbolSpecCache = SymbolSpecCache(ttl_seconds=300.0)

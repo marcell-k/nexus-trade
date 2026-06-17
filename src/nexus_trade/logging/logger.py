@@ -25,7 +25,7 @@ import pandas as pd
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
 from nexus_trade.core.models import NormalizedPosition
 from nexus_trade.core.protocols import MT5Deal
-from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
+from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType, ReconciledTrade
 from nexus_trade.utils.format import format_price_display
 
@@ -601,7 +601,7 @@ class TradeLogger:
 
     def _calculate_slippage_cost(self, symbol: str, volume: float, position_type: int, *spreads: float) -> float | None:
         """Calculate directional slippage cost in account currency."""
-        symbol_info = get_symbol_spec(symbol)
+        symbol_info = SYMBOL_SPEC_CACHE.get_spec(symbol)
         if symbol_info is None:
             return None
         params = self._resolve_slippage_params(symbol, symbol_info, position_type)

@@ -3,7 +3,7 @@ from dataclasses import dataclass
 import MetaTrader5 as mt
 
 from nexus_trade.core.models import Tick
-from nexus_trade.core.symbol import SymbolSpec
+from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 
 
 @dataclass
@@ -37,11 +37,12 @@ class MarketCostCalculator:
             raise RuntimeError(f"Tick data unavailable for {symbol!r}")
         tick: Tick = Tick.from_mt5(raw_tick)
 
-        raw_info = cached_symbol_info if cached_symbol_info is not None else mt.symbol_info(symbol)
-
-        if raw_info is None:
+        effective_info: SymbolSpec | None = (
+            cached_symbol_info if cached_symbol_info is not None else SYMBOL_SPEC_CACHE.get_spec(symbol)
+        )
+        if effective_info is None:
             raise RuntimeError(f"Symbol info unavailable for {symbol!r}")
-        point: float = raw_info.point
+        point: float = effective_info.point
 
         spread_price: float = tick.ask - tick.bid
         spread_points: float = spread_price / point

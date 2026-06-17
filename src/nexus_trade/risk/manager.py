@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 import MetaTrader5 as mt
 
 from nexus_trade.config.risk import SYSTEM_TIMINGS
-from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
+from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import GlobalRiskPolicy, NewsEvent, TTLCache
 from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
@@ -288,7 +288,7 @@ class RiskManager:
             logger.error(f"PosSizeFail strat={strategy_name} | reason=account_info_unavailable")
             return 0.0
 
-        symbol_info = get_symbol_spec(symbol)
+        symbol_info = SYMBOL_SPEC_CACHE.get_spec(symbol)
         if symbol_info is None:
             logger.error(f"PosSizeFail sym={symbol} | reason=symbol_info_unavailable")
             return 0.0
@@ -344,7 +344,7 @@ class RiskManager:
         return 1.0
 
     def validate_position_size(self, symbol: str, volume: float) -> float | None:
-        symbol_info = get_symbol_spec(symbol)
+        symbol_info = SYMBOL_SPEC_CACHE.get_spec(symbol)
         if symbol_info is None:
             logger.error(f"PosNormFail sym={symbol} | reason=symbol_info_unavailable")
             return None
