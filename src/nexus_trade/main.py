@@ -8,6 +8,7 @@ import os
 import signal
 import sys
 from pathlib import Path
+from types import FrameType
 from typing import Final, Never
 
 from nexus_trade.config.account import load_account_config_from_env, load_env_file
@@ -106,7 +107,7 @@ def main() -> int:
         if orchestrator:
             orchestrator.shutdown()
 
-    def signal_handler(sig: int, frame: signal.Handlers | None) -> Never:
+    def signal_handler(sig: int, frame: FrameType | None) -> Never:
         logger.info("Signal sig=SIGINT | action=shutdown")
         raise KeyboardInterrupt
 

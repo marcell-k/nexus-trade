@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta
 from multiprocessing import Lock, Manager, Process, Value
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 import MetaTrader5 as mt
 import numpy as np
@@ -111,11 +111,14 @@ class Orchestrator:
         }
 
     def _initialize_shared_state(self) -> SharedState:
-        state = self.manager.dict()
+        state: SharedState = cast("SharedState", self.manager.dict())
         state["shutdown_flag"] = False
-        state["position_cache"] = self.manager.dict()
+        state["position_cache"] = cast("dict[int, PositionCacheEntry]", self.manager.dict())
         state["position_cache_timestamp"] = 0.0
-        state["heartbeats"] = self.manager.dict()
+        state["heartbeats"] = cast("dict[str, float]", self.manager.dict())
+        state["daily_drawdown"] = 0.0
+        state["max_drawdown"] = 0.0
+        state["daily_trade_counts"] = cast("dict[str, int]", self.manager.dict())
         state["calendar_cache"] = None
         state["calendar_cache_timestamp"] = 0.0
         self._reset_shared_daily_state(state)
@@ -123,27 +126,23 @@ class Orchestrator:
 
     def _reset_shared_daily_state(self, state: SharedState | None = None) -> None:
         target: SharedState = self.shared_state if state is None else state
-        target.update(
-            {
-                "daily_trade_counts": self.manager.dict(),
-                "daily_equity_high": 0.0,
-                "daily_drawdown": 0.0,
-                "daily_drawdown_current_equity": 0.0,
-                "daily_drawdown_peak_equity": 0.0,
-                "daily_drawdown_last_update": 0.0,
-                "daily_drawdown_initialized": False,
-                "daily_drawdown_cache_date": None,
-                "max_drawdown": 0.0,
-                "max_drawdown_current_equity": 0.0,
-                "max_drawdown_peak_equity": 0.0,
-                "max_drawdown_last_update": 0.0,
-                "max_drawdown_initialized": False,
-                "drawdown_last_refresh": 0.0,
-                "hist_pnl_sum": 0,
-                "hist_peak_equity": self.global_risk_policy["initial_balance"],
-                "last_equity_update": 0.0,
-            }
-        )
+        target["daily_trade_counts"] = cast("dict[str, int]", self.manager.dict())
+        target["daily_equity_high"] = 0.0
+        target["daily_drawdown"] = 0.0
+        target["daily_drawdown_current_equity"] = 0.0
+        target["daily_drawdown_peak_equity"] = 0.0
+        target["daily_drawdown_last_update"] = 0.0
+        target["daily_drawdown_initialized"] = False
+        target["daily_drawdown_cache_date"] = None
+        target["max_drawdown"] = 0.0
+        target["max_drawdown_current_equity"] = 0.0
+        target["max_drawdown_peak_equity"] = 0.0
+        target["max_drawdown_last_update"] = 0.0
+        target["max_drawdown_initialized"] = False
+        target["drawdown_last_refresh"] = 0.0
+        target["hist_pnl_sum"] = 0.0
+        target["hist_peak_equity"] = float(self.global_risk_policy["initial_balance"])
+        target["last_equity_update"] = 0.0
 
     def _get_magic_numbers(self) -> frozenset[int]:
         return frozenset(config.execution.magic_number for config in self.strategy_configs.values())
@@ -152,7 +151,9 @@ class Orchestrator:
         """Atomically write positions into the shared position cache."""
         cache_dict = {entry["ticket"]: entry for entry in positions}
         with self.position_cache_lock:
-            shared_cache = self.shared_state.get("position_cache") or self.manager.dict()
+            shared_cache: dict[int, PositionCacheEntry] = cast(
+                "dict[int, PositionCacheEntry]", self.shared_state.get("position_cache") or self.manager.dict()
+            )
             stale = [t for t in list(shared_cache.keys()) if t not in cache_dict]
             for t in stale:
                 shared_cache.pop(t, None)
@@ -193,7 +194,8 @@ class Orchestrator:
             return
 
         df, holidays_frozen = preprocess_calendar_file(calendar_path, self.account_config.broker_tz)
-        self.shared_state["calendar_cache"] = df.to_dict("records")
+        raw = df.to_dict("records")
+        self.shared_state["calendar_cache"] = [{str(k): v for k, v in row.items()} for row in raw]
         self.shared_state["calendar_holidays"] = list(holidays_frozen)
         self.shared_state["calendar_cache_timestamp"] = time.time()
 
@@ -413,6 +415,9 @@ class Orchestrator:
 
     def _refresh_shared_drawdown(self) -> None:
         account = mt.account_info()
+        if account is None:
+            logger.error("DrawdownRefreshFail reason=account_info_unavailable")
+            return
         self._refresh_max_drawdown(account)
         self._refresh_daily_drawdown(account)
 

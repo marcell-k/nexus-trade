@@ -11,10 +11,7 @@ import MetaTrader5 as mt
 
 from nexus_trade.config.risk import SYSTEM_TIMINGS
 from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
-from nexus_trade.core.types import (
-    GlobalRiskPolicy,
-    TTLCache,
-)
+from nexus_trade.core.types import GlobalRiskPolicy, NewsEvent, TTLCache
 from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
 
@@ -188,7 +185,7 @@ class RiskManager:
             self.global_position_count.value += 1
             return self.global_position_count.value
 
-    def _format_news_event(self, event: dict[str, object]) -> str:
+    def _format_news_event(self, event: NewsEvent) -> str:
         currency: str = event.get("currency", "N/A")
         event_name: str = event.get("event_name", "Unknown")
         time_val = event.get("time_strategy")
@@ -330,7 +327,7 @@ class RiskManager:
 
         current_drawdown = self.shared_state["max_drawdown"]
 
-        thresholds: list[dict[str, float]] = sorted(
+        thresholds = sorted(
             adaptive_config.get("drawdown_thresholds", []),
             key=lambda x: x["drawdown_pct"],
             reverse=True,

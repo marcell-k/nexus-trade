@@ -4,6 +4,8 @@ from typing import NamedTuple, overload
 import numpy as np
 import numpy.typing as npt
 
+from nexus_trade.core.types import MT5EntryRequest, MT5Request
+
 TIMEFRAME_M1: int
 TIMEFRAME_M2: int
 TIMEFRAME_M3: int
@@ -248,7 +250,7 @@ def copy_rates_from_pos(
     start_pos: int,
     count: int,
 ) -> npt.NDArray[np.void] | None: ...
-def order_send(request: dict[str, str | int | float | bool]) -> OrderSendResult | None: ...
+def order_send(request: MT5EntryRequest | MT5Request) -> OrderSendResult | None: ...
 @overload
 def positions_get() -> tuple[TradePosition, ...] | None: ...
 @overload

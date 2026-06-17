@@ -36,8 +36,9 @@ class BaseStrategy[T_Params: BaseStrategyParams](ABC):
     3. ``generate_exit_signal``   — every minute, for every open position
     """
 
-    def __init__(self, params: T_Params) -> None:
+    def __init__(self, params: T_Params, strategy_name: str) -> None:
         self.params: T_Params = params
+        self.strategy_name: str = strategy_name
 
     @abstractmethod
     def generate_entry_signal(self, data: pd.DataFrame) -> EntryRequest | None:

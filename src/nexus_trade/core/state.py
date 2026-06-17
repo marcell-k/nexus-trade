@@ -19,21 +19,21 @@ class _SharedStateRequired(TypedDict):
     position_cache: dict[int, PositionCacheEntry]
     position_cache_timestamp: float
     heartbeats: dict[str, float]
+    daily_drawdown: float
+    max_drawdown: float
+    daily_trade_counts: dict[str, int]
 
 
 class SharedState(_SharedStateRequired, total=False):
     calendar_cache: list[dict[str, object]] | None
     calendar_cache_timestamp: float
     calendar_holidays: list[tuple[str, date]]
-    daily_trade_counts: dict[str, int]
     daily_equity_high: float
-    daily_drawdown: float
     daily_drawdown_current_equity: float
     daily_drawdown_peak_equity: float
     daily_drawdown_last_update: float
     daily_drawdown_initialized: bool
     daily_drawdown_cache_date: date | None
-    max_drawdown: float
     max_drawdown_current_equity: float
     max_drawdown_peak_equity: float
     max_drawdown_last_update: float

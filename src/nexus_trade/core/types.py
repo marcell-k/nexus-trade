@@ -6,7 +6,12 @@ from enum import Enum
 from typing import TYPE_CHECKING, Protocol, TypedDict
 
 if TYPE_CHECKING:
+    from datetime import datetime
+    from datetime import time as dt_time
+
     from nexus_trade.config.strategy import SessionConfig
+    from nexus_trade.core.constants import OrderFilling, OrderType, TimeInForce, TradeAction
+    from nexus_trade.execution.request import EntryRequest
 
 
 class PositionType(Enum):
@@ -121,13 +126,17 @@ class StrategyRiskConfig(TypedDict):
     risk_per_trade: float
 
 
-class EntryMetadata(TypedDict, total=False):
+class _EntryMetadataRequired(TypedDict):
     submission_time: float
     volume_multiplier: float | None
     ticket: int | None
-    position_snapshot: PositionCacheEntry | None
-    expected_entry_price: float
     opening_sl: float | None
+    position_snapshot: PositionCacheEntry | None
+
+
+class EntryMetadata(_EntryMetadataRequired, total=False):
+    expected_entry_price: float
+    entry_request: EntryRequest | None
     expected_buy_entry: float | None
     expected_sell_entry: float | None
     buy_sl: float | None
@@ -159,3 +168,51 @@ class RawStrategyConfig(_RawStrategyConfigRequired, total=False):
     news_filter_enabled: bool | None
     currencies: list[str] | None
     buffer_minutes: int | None
+
+
+class NewsEvent(TypedDict, total=False):
+    time_strategy: datetime | dt_time | None
+    time_broker: datetime | dt_time | None
+    currency: str
+    type: str
+    event_name: str
+    priority: str
+    minutes_until: float
+
+
+class MT5EntryRequest(TypedDict):
+    """Required fields for all entry orders (market, pending, bracket)."""
+
+    action: TradeAction
+    symbol: str
+    volume: float
+    type: OrderType
+    price: float
+    type_filling: OrderFilling
+    type_time: TimeInForce
+    sl: float
+    tp: float
+    deviation: int
+    magic: int
+    comment: str
+
+
+class MT5Request(TypedDict, total=False):
+    """Sparse request dict for non-entry operations: modify, cancel, close."""
+
+    action: TradeAction
+    symbol: str
+    position: int
+    order: int
+    sl: float
+    tp: float
+    volume: float
+    type: OrderType
+    price: float
+    type_filling: OrderFilling
+    type_time: TimeInForce
+    magic: int
+    comment: str
+    expiration: int
+    stoplimit: float
+    deviation: int

@@ -12,6 +12,7 @@ import pandas as pd
 from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.state import SharedState
+from nexus_trade.core.types import NewsEvent
 
 logger = logging.getLogger(__name__)
 
@@ -299,7 +300,8 @@ class NewsFilter:
             return False
 
         cache_age = time.time() - float(shared_timestamp)
-        logger.debug(f"CalCacheLoad evt={len(self._calendar_cache)} | age={cache_age:.1f}s")
+        cache = self._calendar_cache
+        logger.debug(f"CalCacheLoad evt={len(cache) if cache is not None else 0} | age={cache_age:.1f}s")
         return True
 
     def _load_from_file(self) -> bool:
@@ -315,13 +317,17 @@ class NewsFilter:
         df["time_strategy"] = df["time_broker"].dt.tz_convert(self.strategy_tz)
         self._set_calendar_cache(df, holidays)
 
-        high_impact_count = int(self._calendar_cache["priority"].eq("High").sum())
-        logger.info(
-            f"CalLoad evt={len(self._calendar_cache)} | hi={high_impact_count} | hol={len(self._holiday_dates)}"
-        )
+        cache = self._calendar_cache
+        if cache is None:
+            return False
+
+        high_impact_count = int(cache["priority"].eq("High").sum())
+        logger.info(f"CalLoad evt={len(cache)} | hi={high_impact_count} | hol={len(self._holiday_dates)}")
 
         if self.shared_state is not None:
-            self.shared_state["calendar_cache"] = self._calendar_cache.to_dict("records")
+            raw_records = cache.to_dict("records")
+            safe_records: list[dict[str, object]] = [{str(k): v for k, v in row.items()} for row in raw_records]
+            self.shared_state["calendar_cache"] = safe_records
             self.shared_state["calendar_holidays"] = list(self._holiday_dates)
             self.shared_state["calendar_cache_timestamp"] = self._cache_timestamp or time.time()
 
@@ -386,7 +392,7 @@ class NewsFilter:
         self._high_impact_times_epoch = None
         self._event_index_cache = {}
 
-    def get_next_event(self, priority: str = "High", currencies: list[str] | None = None) -> dict | None:
+    def get_next_event(self, priority: str = "High", currencies: list[str] | None = None) -> NewsEvent | None:
         """
         Get next upcoming event matching priority and currency filters.
 
@@ -401,6 +407,9 @@ class NewsFilter:
         if not self._load_calendar():
             return None
 
+        cache = self._calendar_cache
+        if cache is None:
+            return None
         now_strategy = datetime.now(self.strategy_tz)
         now_epoch = self._to_epoch_seconds(now_strategy)
         event_times_epoch = self._get_event_index(priority, currencies)
@@ -410,9 +419,8 @@ class NewsFilter:
         if next_idx >= event_times_epoch.size:
             return None
 
-        # Rebuild filtered view on demand (cold path — called infrequently).
         currency_key = self._resolve_currency_key(currencies)
-        view = self._calendar_cache[self._calendar_cache["priority"] == priority]
+        view = cache[cache["priority"] == priority]
         if currency_key:
             view = view[view["currency"].isin(currency_key)]
         view = view.sort_values("time_strategy").reset_index(drop=True)

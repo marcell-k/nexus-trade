@@ -29,6 +29,7 @@ class SMACrossoverStrategy(BaseStrategy[SMAParams]):
             sl = current - atr * self.params.atr_multiplier
             tp = current + atr * self.params.atr_multiplier * self.params.risk_reward_ratio
             return EntryRequest(
+                strategy_name=self.strategy_name,
                 order_type="market",
                 symbol=self.params.symbol,
                 volume=self.params.volume_fixed_lots,
@@ -42,6 +43,7 @@ class SMACrossoverStrategy(BaseStrategy[SMAParams]):
             sl = current + atr * self.params.atr_multiplier
             tp = current - atr * self.params.atr_multiplier * self.params.risk_reward_ratio
             return EntryRequest(
+                strategy_name=self.strategy_name,
                 order_type="market",
                 symbol=self.params.symbol,
                 volume=self.params.volume_fixed_lots,

@@ -1,22 +1,51 @@
+from __future__ import annotations
+
 import json
 import pickle
 from pathlib import Path
-from typing import Literal, TypeVar
+from typing import TYPE_CHECKING, Literal, Protocol, cast
 
-import joblib
 import numpy as np
-import pandas as pd
-from scipy.optimize import minimize
-from sklearn.isotonic import IsotonicRegression
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import brier_score_loss, log_loss
 
-from nexus_trade.core.protocols import ClassifierWithProba, SupportsPredict, SupportsPredictProba
+if TYPE_CHECKING:
+    import pandas as pd
 
-T = TypeVar("T", bound=SupportsPredictProba | SupportsPredict | Literal["temperature"])
+    from nexus_trade.core.protocols import ClassifierWithProba
+
+try:
+    import joblib  # pyright: ignore[reportMissingImports]
+    from scipy.optimize import minimize  # pyright: ignore[reportMissingImports]
+    from sklearn.isotonic import IsotonicRegression  # pyright: ignore[reportMissingImports]
+    from sklearn.linear_model import LogisticRegression  # pyright: ignore[reportMissingImports]
+    from sklearn.metrics import brier_score_loss, log_loss  # pyright: ignore[reportMissingImports]
+
+except ImportError as _ml_import_err:
+    raise ImportError(
+        "calibrator.py requires optional ML deps: pip install joblib scipy scikit-learn"
+    ) from _ml_import_err
 
 
-class ProbabilityCalibrator[T]:
+class _SklearnClassifier(Protocol):
+    """Binary sklearn classifier operating on ndarray inputs."""
+
+    coef_: np.ndarray
+    intercept_: np.ndarray
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> object: ...
+    def predict_proba(self, X: np.ndarray) -> np.ndarray: ...
+
+
+class _IsotonicModel(Protocol):
+    """Isotonic regression operating on ndarray inputs."""
+
+    def fit(self, X: np.ndarray, y: np.ndarray) -> object: ...
+    def predict(self, X: np.ndarray) -> np.ndarray: ...
+
+
+_ModelType = _SklearnClassifier | _IsotonicModel | Literal["temperature"]
+
+
+class ProbabilityCalibrator:
     r"""
     Post-hoc probability calibration with proper train/test separation.
 
@@ -40,13 +69,13 @@ class ProbabilityCalibrator[T]:
     ) -> None:
         self.method: str = method.lower()
         self.base_methods: tuple[str, ...] = base_methods
-        self.model: T | None = None
+        self.model: _ModelType | None = None
         self.T: float | None = None
         self._fitted: bool = False
 
         # Meta-method attributes
-        self.base_calibrators: dict[str, ProbabilityCalibrator[T]] = {}
-        self.meta_model: SupportsPredictProba | None = None
+        self.base_calibrators: dict[str, ProbabilityCalibrator] = {}
+        self.meta_model: _SklearnClassifier | None = None
 
         # Validation
         valid_base_methods = {"platt", "beta", "isotonic", "temperature"}
@@ -79,7 +108,7 @@ class ProbabilityCalibrator[T]:
         p_cal: np.ndarray,
         y_dev: np.ndarray | None = None,
         p_dev: np.ndarray | None = None,
-    ) -> "ProbabilityCalibrator[T]":
+    ) -> ProbabilityCalibrator:
         """Fit calibration mapping. Stacking requires y_dev/p_dev for meta-model."""
         y_cal = np.asarray(y_cal, dtype=int).reshape(-1)
         p_cal = np.asarray(p_cal, dtype=float).reshape(-1)
@@ -94,7 +123,7 @@ class ProbabilityCalibrator[T]:
         # Branch: Base methods
         return self._fit_base(y_cal, p_cal)
 
-    def _fit_base(self, y_cal: np.ndarray, p_cal: np.ndarray) -> "ProbabilityCalibrator[T]":
+    def _fit_base(self, y_cal: np.ndarray, p_cal: np.ndarray) -> ProbabilityCalibrator:
         """Fit base calibration method (platt, beta, isotonic, temperature)."""
         if self.method == "platt":
             X = self._logit(p_cal).reshape(-1, 1)
@@ -134,7 +163,7 @@ class ProbabilityCalibrator[T]:
         p_cal: np.ndarray,
         y_dev: np.ndarray | None,
         p_dev: np.ndarray | None,
-    ) -> "ProbabilityCalibrator[T]":
+    ) -> ProbabilityCalibrator:
         r"""
         Fit meta-calibration method (ensemble or stacking).
 
@@ -178,6 +207,8 @@ class ProbabilityCalibrator[T]:
 
         # Stage 2 (Stacking only): Fit meta-model on dev predictions
         if self.method == "stacking":
+            assert y_dev is not None
+            assert p_dev is not None
             print(f"\nStage 2: Training meta-model on dev data ({len(y_dev)} samples)")
 
             # Generate meta-features: logit-transformed probabilities from each calibrator
@@ -196,15 +227,16 @@ class ProbabilityCalibrator[T]:
 
             # Fit logistic regression meta-model
             # C=1.0 provides L2 regularization to prevent overfitting on dev set
-            self.meta_model = LogisticRegression(C=1.0, solver="lbfgs", random_state=42, max_iter=1000)
-            self.meta_model.fit(X_meta_dev, y_dev)
+            _meta = LogisticRegression(C=1.0, solver="lbfgs", random_state=42, max_iter=1000)
+            _meta.fit(X_meta_dev, y_dev)
+            self.meta_model = _meta
 
             # Print learned weights (diagnostic)
             feature_names = ["original", *list(self.base_calibrators.keys())]
             print("\nLearned meta-model weights:")
-            for name, weight in zip(feature_names, self.meta_model.coef_[0], strict=True):
+            for name, weight in zip(feature_names, _meta.coef_[0], strict=True):
                 print(f"  {name:<12}: {weight:+.4f}")
-            print(f"  Intercept: {self.meta_model.intercept_[0]:+.4f}")
+            print(f"  Intercept: {_meta.intercept_[0]:+.4f}")
 
         print(f"✓ {self.method.capitalize()} calibrator fitted successfully")
         self._fitted = True
@@ -217,23 +249,28 @@ class ProbabilityCalibrator[T]:
 
         p = np.asarray(p_infer, dtype=float).reshape(-1)
 
-        # Branch: Meta-methods
         if self.method == "ensemble":
             return self._transform_ensemble(p)
-        elif self.method == "stacking":
+        if self.method == "stacking":
             return self._transform_stacking(p)
-
-        # Branch: Base methods
+        if self.model is None:
+            raise RuntimeError(f"Model not fitted for method '{self.method}'")
         if self.method == "platt":
-            return self.model.predict_proba(self._logit(p).reshape(-1, 1))[:, 1]
-        elif self.method == "isotonic":
-            return self.model.predict(p)
-        elif self.method == "beta":
+            _m = cast("_SklearnClassifier", self.model)
+            return _m.predict_proba(self._logit(p).reshape(-1, 1))[:, 1]
+        if self.method == "isotonic":
+            _m_iso = cast("_IsotonicModel", self.model)
+            return _m_iso.predict(p)
+        if self.method == "beta":
+            _m = cast("_SklearnClassifier", self.model)
             X = np.column_stack([self._logit(p), self._logit(1 - p)])
-            return self.model.predict_proba(X)[:, 1]
-        elif self.method == "temperature":
+            return _m.predict_proba(X)[:, 1]
+        if self.method == "temperature":
+            if self.T is None:
+                raise RuntimeError("Temperature T not set")
             z = self._logit(p)
             return 1.0 / (1.0 + np.exp(-z / self.T))
+        raise RuntimeError(f"Unknown base method: '{self.method}'")
 
     def _transform_ensemble(self, p: np.ndarray) -> np.ndarray:
         r"""
@@ -258,9 +295,7 @@ class ProbabilityCalibrator[T]:
             raise RuntimeError("All base calibrators failed during transform")
 
         # Vectorized averaging: O(K * n) memory, O(n) final operation
-        p_ensemble: float = np.mean(calibrated_predictions, axis=0)
-
-        return p_ensemble
+        return np.mean(calibrated_predictions, axis=0)
 
     def _transform_stacking(self, p: np.ndarray) -> np.ndarray:
         r"""
@@ -286,9 +321,9 @@ class ProbabilityCalibrator[T]:
         X_meta = np.column_stack(meta_features)
 
         # Meta-model prediction: O(n * K) complexity
-        p_stack = self.meta_model.predict_proba(X_meta)[:, 1]
-
-        return p_stack
+        if self.meta_model is None:
+            raise RuntimeError("Meta-model not fitted")
+        return self.meta_model.predict_proba(X_meta)[:, 1]
 
     @staticmethod
     def calculate_prob_array(X: pd.DataFrame, final_model: ClassifierWithProba) -> np.ndarray:
@@ -547,7 +582,7 @@ class ProbabilityCalibrator[T]:
         production_model: ClassifierWithProba,
         method: str = "platt",
         save_path: str | None = None,
-    ) -> "ProbabilityCalibrator[T]":
+    ) -> ProbabilityCalibrator:
         """Fit production calibrator on 100% of data. Stacking uses 70/30 temporal split."""
         print(f"\n{'=' * 60}\nFITTING PRODUCTION CALIBRATOR (100% DATA)\n{'=' * 60}")
         print(f"Method: {method}")
@@ -602,7 +637,7 @@ class ProbabilityCalibrator[T]:
 
         # Save calibrator if path provided
         if save_path:
-            with Path.open(save_path, "wb") as f:
+            with Path(save_path).open("wb") as f:
                 pickle.dump(calibrator, f)
             print(f"\n✓ Production calibrator saved to {save_path}")
 
@@ -612,7 +647,7 @@ class ProbabilityCalibrator[T]:
         print(f"Method: {method}")
         print(f"Training samples: {len(y_full):,}")
         print(f"Class distribution: {np.mean(y_full):.2%} positive rate")
-        print("\n⚠ PRODUCTION USAGE:")
+        print("\n  PRODUCTION USAGE:")
         print("  1. Load calibrator: pickle.load('calibrator.pkl')")
         print("  2. Get model proba: p = model.predict_proba(X_new)[:, 1]")
         print("  3. Calibrate: p_cal = calibrator.transform(p)")
@@ -675,7 +710,7 @@ class ProbabilityCalibrator[T]:
         )
 
     @classmethod
-    def load_state(cls, input_dir: str = "models") -> "ProbabilityCalibrator[T]":
+    def load_state(cls, input_dir: str = "models") -> ProbabilityCalibrator:
         """Load calibrator from state directory (JSON config + joblib models)."""
         # Load state
         state_path = Path(input_dir) / "calibrator_state.json"

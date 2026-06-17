@@ -2,7 +2,7 @@ from dataclasses import dataclass
 
 import MetaTrader5 as mt
 
-from nexus_trade.core.protocols import SymbolInfo
+from nexus_trade.core.models import Tick
 from nexus_trade.core.symbol import SymbolSpec
 
 
@@ -19,13 +19,7 @@ class MarketCondition:
 
 
 class MarketCostCalculator:
-    """
-    Validate spread and slippage with automatic normalization per symbol.
-
-    Normalization Formula:
-        Points = Price Difference / Symbol Point Size
-
-    """
+    """Validate spread and slippage with automatic normalization per symbol."""
 
     def __init__(self, max_spread_points: float = 30.0, max_slippage_points: float = 20.0) -> None:
         self.max_spread_points: float = max_spread_points
@@ -36,10 +30,17 @@ class MarketCostCalculator:
         symbol: str,
         expected_price: float,
         is_buy: bool,
-        cached_symbol_info: SymbolSpec | SymbolInfo | None = None,
+        cached_symbol_info: SymbolSpec | None = None,
     ) -> MarketCondition:
-        tick = mt.symbol_info_tick(symbol)
-        raw_info: SymbolSpec | SymbolInfo = cached_symbol_info or mt.symbol_info(symbol)
+        raw_tick = mt.symbol_info_tick(symbol)
+        if raw_tick is None:
+            raise RuntimeError(f"Tick data unavailable for {symbol!r}")
+        tick: Tick = Tick.from_mt5(raw_tick)
+
+        raw_info = cached_symbol_info if cached_symbol_info is not None else mt.symbol_info(symbol)
+
+        if raw_info is None:
+            raise RuntimeError(f"Symbol info unavailable for {symbol!r}")
         point: float = raw_info.point
 
         spread_price: float = tick.ask - tick.bid

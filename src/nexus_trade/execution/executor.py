@@ -19,10 +19,11 @@ from nexus_trade.core.constants import (
     TimeInForce,
     TradeAction,
 )
-from nexus_trade.core.models import NormalizedPosition
+from nexus_trade.core.models import NormalizedPosition, Tick
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.state import normalize_order
 from nexus_trade.core.symbol import SymbolSpec, SymbolSpecCache
+from nexus_trade.core.types import MT5EntryRequest, MT5Request
 from nexus_trade.execution.request import (
     EntryRequest,
     ExecutionResult,
@@ -38,11 +39,8 @@ if TYPE_CHECKING:
     from MetaTrader5 import OrderSendResult, TradePosition
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
-    from nexus_trade.core.models import Position
-    from nexus_trade.core.protocols import SymbolInfo
-    from nexus_trade.core.types import MT5Tick, OrderSnapshot, PositionCacheEntry
+    from nexus_trade.core.types import MT5EntryRequest, MT5Tick, OrderSnapshot, PositionCacheEntry
 
-from nexus_trade.core.models import Tick
 
 logger = logging.getLogger(__name__)
 
@@ -168,26 +166,25 @@ class OrderExecutor:
         sl = round(request.sl, symbol_spec.digits) if request.sl is not None else 0.0
         tp = round(request.tp, symbol_spec.digits) if request.tp is not None else 0.0
 
-        mt5_request: dict[str, object] = {
+        mt5_request: MT5EntryRequest = {
             "action": TradeAction.DEAL,
             "symbol": symbol,
             "volume": request.volume,
-            "type": int(order_type),
+            "type": order_type,
             "price": price,
             "sl": sl,
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
             "comment": request.comment,
-            "type_filling": int(type_filling),
-            "type_time": int(TimeInForce.GTC),
+            "type_filling": type_filling,
+            "type_time": TimeInForce.GTC,
         }
 
         result = self._order_send_with_retry(mt5_request)
-        ok, error_msg = self._validate_order_result(result)
-        if not ok:
+        if result is None or result.retcode != self._retcode_done:
+            error_msg = result.comment if result is not None else "MT5 returned None"
             return self._fail_entry(symbol, error_msg)
-
         logger.info(
             f"EntryOK typ={order_type.name} | sym={symbol} | vol={request.volume:.2f} | "
             f"px={format_price_display(price)} | sl={sl} | tp={tp} | t={result.order}"
@@ -206,41 +203,44 @@ class OrderExecutor:
         config = self._get_strategy_config(request.strategy_name)
         symbol = request.symbol
         symbol_spec, type_filling = self._get_cached_symbol_spec(symbol)
-        sl: float = round(request.sl, symbol_spec.digits) if request.sl else 0.0
-        tp: float = round(request.tp, symbol_spec.digits) if request.tp else 0.0
+        sl: float = round(request.sl, symbol_spec.digits) if request.sl is not None else 0.0
+        tp: float = round(request.tp, symbol_spec.digits) if request.tp is not None else 0.0
 
         expiration = self._resolve_expiration(request, symbol)
         if expiration is _ExpirationOutcome.EXPIRED:
             return self._fail_entry(symbol, "Expiration time has already passed")
 
         exp_ts = expiration if isinstance(expiration, int) else None
-        type_time = int(TimeInForce.SPECIFIED) if exp_ts else int(TimeInForce.GTC)
+        type_time: TimeInForce = TimeInForce.SPECIFIED if exp_ts else TimeInForce.GTC
 
-        order: dict[str, object] = {
-            "action": int(TradeAction.PENDING),
+        order: MT5EntryRequest = {
+            "action": TradeAction.PENDING,
             "symbol": symbol,
             "volume": float(request.volume),
-            "type": int(order_type),
-            "price": request.entry_price,
+            "type": order_type,
+            "price": request.entry_price or 0.0,
             "sl": sl,
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
             "comment": request.comment,
-            "type_filling": int(type_filling),
+            "type_filling": type_filling,
             "type_time": type_time,
         }
         if exp_ts:
-            order["expiration"] = int(exp_ts)
-
-        result = self._order_send_with_retry(order)
+            # expiration only present when needed — use MT5Request for the extended form
+            order_with_exp: MT5Request = {**order, "expiration": exp_ts}
+            result = self._order_send_with_retry(order_with_exp)
+        else:
+            result = self._order_send_with_retry(order)
         ok, error_msg = self._validate_order_result(result)
         if not ok:
             return self._fail_entry(symbol, error_msg)
 
+        assert result is not None
         logger.info(
             f"EntryOK typ={order_type.name} | sym={symbol} | vol={request.volume:.2f} | "
-            f"px={format_price_display(request.entry_price)} | sl={sl} | "
+            f"px={format_price_display(request.entry_price or 0.0)} | sl={sl} | "
             f"tp={tp} | t={result.order}"
         )
         return ExecutionResult(success=True, ticket=result.order, request_type="entry", symbol=symbol)
@@ -277,10 +277,12 @@ class OrderExecutor:
             return self._fail_entry(symbol, "Bracket execution failed")
 
         exp_label = request.expiration_time if request.expiration_time else "GTC"
+        buy_order_type = buy_req.get("type", OrderType.BUY_STOP)
+        sell_order_type = sell_req.get("type", OrderType.SELL_STOP)
         logger.info(
             f"{request.strategy_name}: BrktOK sym={symbol} | "
-            f"buy={OrderType(buy_req['type']).name}@{request.buy_stop:.{symbol_spec.digits}f} | "
-            f"sell={OrderType(sell_req['type']).name}@{request.sell_stop:.{symbol_spec.digits}f} | "
+            f"buy={OrderType(buy_order_type).name}@{request.buy_stop:.{symbol_spec.digits}f} | "
+            f"sell={OrderType(sell_order_type).name}@{request.sell_stop:.{symbol_spec.digits}f} | "
             f"exp={exp_label}"
         )
         logger.debug(f"BrktOKIds sym={symbol} | buy={buy_result.order} | sell={sell_result.order}")
@@ -301,13 +303,13 @@ class OrderExecutor:
         expiration_timestamp: int | None,
         strategy_config: StrategyConfig[BaseStrategyParams],
         min_market_threshold_points: int,
-    ) -> tuple[dict[str, object], dict[str, object]]:
-        buy_stop: float = round(request.buy_stop, symbol_spec.digits)
-        sell_stop: float = round(request.sell_stop, symbol_spec.digits)
-        buy_sl: float = round(request.buy_sl, symbol_spec.digits)
-        sell_sl: float = round(request.sell_sl, symbol_spec.digits)
-        buy_tp: float = round(request.buy_tp, symbol_spec.digits)
-        sell_tp: float = round(request.sell_tp, symbol_spec.digits)
+    ) -> tuple[MT5EntryRequest | MT5Request, MT5EntryRequest | MT5Request]:
+        buy_stop = round(request.buy_stop or 0.0, symbol_spec.digits)
+        sell_stop = round(request.sell_stop or 0.0, symbol_spec.digits)
+        buy_sl = round(request.buy_sl or 0.0, symbol_spec.digits)
+        sell_sl = round(request.sell_sl or 0.0, symbol_spec.digits)
+        buy_tp = round(request.buy_tp or 0.0, symbol_spec.digits)
+        sell_tp = round(request.sell_tp or 0.0, symbol_spec.digits)
 
         stops_level_price_display = format_price_display(market.stops_level * symbol_spec.point)
         logger.debug(
@@ -397,28 +399,30 @@ class OrderExecutor:
         strategy_config: StrategyConfig[BaseStrategyParams],
         type_filling: OrderFilling,
         expiration_timestamp: int | None,
-    ) -> dict[str, object]:
+    ) -> MT5EntryRequest | MT5Request:
         is_pending_with_exp = bool(expiration_timestamp and action == TradeAction.PENDING)
-        req: dict[str, object] = {
-            "action": int(action),
+        req: MT5EntryRequest = {
+            "action": action,
             "symbol": symbol,
             "volume": float(volume),
-            "type": int(order_type),
+            "type": order_type,
             "price": float(price),
             "sl": float(sl),
             "tp": float(tp),
             "deviation": strategy_config.execution.deviation,
             "magic": strategy_config.execution.magic_number,
             "comment": str(strategy_config.execution.comment_prefix),
-            "type_filling": int(type_filling),
-            "type_time": int(TimeInForce.SPECIFIED) if is_pending_with_exp else int(TimeInForce.GTC),
+            "type_filling": type_filling,
+            "type_time": TimeInForce.SPECIFIED if is_pending_with_exp else TimeInForce.GTC,
         }
         if is_pending_with_exp:
-            req["expiration"] = int(expiration_timestamp)
+            assert expiration_timestamp is not None
+            extra: MT5Request = {"expiration": expiration_timestamp}
+            return {**req, **extra}
         return req
 
     def _send_bracket_orders(
-        self, buy_request: dict[str, object], sell_request: dict[str, object], symbol: str
+        self, buy_request: MT5EntryRequest | MT5Request, sell_request: MT5EntryRequest | MT5Request, symbol: str
     ) -> tuple[OrderSendResult | None, OrderSendResult | None]:
         buy_raw = self._order_send_with_retry(buy_request)
         ok, error_msg = self._validate_order_result(buy_raw)
@@ -430,7 +434,8 @@ class OrderExecutor:
         ok, error_msg = self._validate_order_result(sell_raw)
         if not ok:
             logger.error(f"BrktSellFail sym={symbol} | err={error_msg}")
-            self._cancel_order(buy_raw.order)
+            if buy_raw is not None:
+                self._cancel_order(buy_raw.order)
             return None, None
 
         return buy_raw, sell_raw
@@ -499,17 +504,18 @@ class OrderExecutor:
     def _server_epoch_to_broker_display(self, srv_epoch: int) -> pd.Timestamp:
         """Convert server epoch (UTC) to broker display timezone."""
         time_utc = pd.to_datetime(srv_epoch, unit="s", utc=True)
-        offset = time_utc.tz_convert(self.broker_tz).utcoffset().total_seconds()
+        delta = time_utc.tz_convert(self.broker_tz).utcoffset()
+        assert delta is not None
+        offset = delta.total_seconds()
+
         return (time_utc - pd.Timedelta(seconds=offset)).tz_convert(self.broker_tz)
 
     def _broker_display_to_utc_epoch(self, broker_display: pd.Timestamp) -> int:
         """Convert broker display time back to real UTC epoch."""
-        offset = (
-            pd.to_datetime(broker_display.value, unit="ns", utc=True)
-            .tz_convert(self.broker_tz)
-            .utcoffset()
-            .total_seconds()
-        )
+        time_utc = pd.to_datetime(broker_display.value, unit="ns", utc=True)
+        delta = time_utc.tz_convert(self.broker_tz).utcoffset()
+        assert delta is not None
+        offset = delta.total_seconds()
         real_utc = broker_display.tz_convert("UTC") + pd.Timedelta(seconds=offset)
         return int(real_utc.timestamp())
 
@@ -534,7 +540,7 @@ class OrderExecutor:
         self,
         tickets: list[int],
         portions: list[float] | None = None,
-        preloaded_positions: dict[int, Position] | None = None,
+        preloaded_positions: dict[int, TradePosition] | None = None,
     ) -> dict[int, tuple[bool, int | None]]:
         """Close positions with optional partial closing. Returns {ticket: (success, deal_id)}."""
         results: dict[int, tuple[bool, int | None]] = {}
@@ -542,7 +548,7 @@ class OrderExecutor:
         if len(resolved_portions) != len(tickets):
             return dict.fromkeys(tickets, (False, None))
 
-        position_by_ticket: dict[int, object] = dict(preloaded_positions or {})
+        position_by_ticket: dict[int, TradePosition] = dict(preloaded_positions or {})
         missing = [t for t in tickets if t not in position_by_ticket]
         if missing:
             loaded = self._load_positions_for_tickets(missing)
@@ -566,7 +572,7 @@ class OrderExecutor:
         self,
         ticket: int,
         portion: float | None,
-        pos: object | None,
+        pos: TradePosition | None,
         tick_cache: dict[str, object],
     ) -> tuple[bool, int | None]:
         """Process the closing of a single ticket position."""
@@ -591,17 +597,17 @@ class OrderExecutor:
         close_type = OrderType.SELL if pos_type == mt.POSITION_TYPE_BUY else OrderType.BUY
         close_price = tick.bid if close_type == OrderType.SELL else tick.ask  # type: ignore[union-attr]
 
-        order: dict[str, object] = {
-            "action": int(TradeAction.DEAL),
+        order: MT5Request = {
+            "action": TradeAction.DEAL,
             "symbol": symbol,
             "volume": float(close_volume),
-            "type": int(close_type),
+            "type": close_type,
             "position": ticket,
             "price": close_price,
             "magic": pos.magic,
             "comment": f"Close {portion * 100 if portion else 100:.0f}%",
-            "type_filling": int(filling_mode),
-            "type_time": int(TimeInForce.GTC),
+            "type_filling": filling_mode,
+            "type_time": TimeInForce.GTC,
         }
 
         result = self._order_send_with_retry(order)
@@ -643,7 +649,7 @@ class OrderExecutor:
 
         result = self._order_send_with_retry(
             {
-                "action": int(TradeAction.SLTP),
+                "action": TradeAction.SLTP,
                 "position": ticket,
                 "symbol": pos.symbol,
                 "sl": final_sl,
@@ -665,7 +671,7 @@ class OrderExecutor:
         return True
 
     def _cancel_order(self, ticket: int) -> bool:
-        result = self._order_send_with_retry({"action": int(TradeAction.REMOVE), "order": ticket})
+        result = self._order_send_with_retry(MT5Request(action=TradeAction.REMOVE, order=ticket))
         return bool(result and result.retcode == self._retcode_done)
 
     def cancel_bracket_orders(
@@ -690,7 +696,9 @@ class OrderExecutor:
         if not normalized_positions or not normalized_orders:
             return empty
 
-        position_groups: dict[tuple[str, int], dict[str, list[dict]]] = defaultdict(lambda: {"BUY": [], "SELL": []})
+        position_groups: dict[tuple[str, int], dict[str, list[PositionCacheEntry]]] = defaultdict(
+            lambda: {"BUY": [], "SELL": []}
+        )
         symbol_set = frozenset(symbols)
         magic_set = frozenset(magics)
         for pos in normalized_positions:
@@ -826,7 +834,7 @@ class OrderExecutor:
         return {p.ticket: p for p in all_pos if p.ticket in ticket_set}
 
     def _order_send_with_retry(
-        self, mt5_request: dict[str, object], success_codes: set[int] | None = None
+        self, mt5_request: MT5EntryRequest | MT5Request, success_codes: set[int] | None = None
     ) -> OrderSendResult | None:
         """Exponential-backoff retry wrapper around mt.order_send."""
         symbol: str = str(mt5_request.get("symbol", ""))

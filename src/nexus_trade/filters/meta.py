@@ -28,7 +28,7 @@ def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierPr
         return None
 
     try:
-        import xgboost as xgb
+        import xgboost as xgb  # type: ignore[reportMissingImports]
     except ImportError:
         logger.warning(f"{strategy_name}: xgboost not installed; meta-labeling disabled")
         return None
@@ -43,7 +43,7 @@ def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierPr
         return None
 
 
-def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> ProbabilityCalibrator[object] | None:
+def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> ProbabilityCalibrator | None:
     if not cfg.use_calibration:
         return None
 

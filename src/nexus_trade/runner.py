@@ -163,7 +163,7 @@ class StrategyRunner:
         self.position_state_lock: threading.Lock = threading.Lock()
 
         self.meta_model: XGBClassifierProtocol | None = None
-        self.calibration_model: ProbabilityCalibrator[object] | None = None
+        self.calibration_model: ProbabilityCalibrator | None = None
         self.feature_extractor: Callable[[pd.DataFrame], pd.DataFrame] | None = None
         self.meta_min_confidence: float = 0.0
 
@@ -386,13 +386,13 @@ class StrategyRunner:
         ticket = pos.ticket
         self.known_positions.add(ticket)
         self.entry_metadata[trade_id] = {
-            "expected_entry_price": expected_entry_price if expected_entry_price is not None else pos.price_open,
-            "opening_sl": opening_sl if opening_sl is not None else pos.sl,
             "submission_time": submission_time,
             "volume_multiplier": volume_multiplier,
             "ticket": ticket,
-            "entry_request": None,
+            "opening_sl": opening_sl if opening_sl is not None else pos.sl,
             "position_snapshot": _position_to_cache_entry(pos),
+            "expected_entry_price": expected_entry_price if expected_entry_price is not None else pos.price_open,
+            "entry_request": None,
         }
         self.ticket_to_trade_id[ticket] = trade_id
 
@@ -444,8 +444,8 @@ class StrategyRunner:
                 fill_data = self._build_fill_data(
                     trade_id=trade_id,
                     position=position_obj,
-                    expected_entry_price=metadata["expected_entry_price"],
-                    opening_sl=metadata["opening_sl"],
+                    expected_entry_price=metadata.get("expected_entry_price", 0.0),
+                    opening_sl=metadata.get("opening_sl"),
                     fill_time_ms=None,
                     volume_multiplier=metadata.get("volume_multiplier"),
                 )
@@ -518,7 +518,7 @@ class StrategyRunner:
     def _invalidate_cache_for_ticket(self, ticket: int) -> None:
         logger.debug(f"{self.strategy_name:<9}: CacheInvalidate t={ticket} | refreshes on next heartbeat")
 
-    def _resolve_entry_prices(self, ticket: int, pos: Position) -> tuple[int | None, float, float | None, float]:
+    def _resolve_entry_prices(self, ticket: int, pos: Position) -> tuple[int | None, float | None, float | None, float]:
         trade_id = self.ticket_to_trade_id.get(ticket)
         if trade_id is None:
             logger.error(f"{self.strategy_name:<9}: OrphanPos t={ticket} | reason=no_metadata")
@@ -532,10 +532,9 @@ class StrategyRunner:
             return (
                 trade_id,
                 metadata.get("expected_entry_price", entry_price),
-                metadata.get("opening_sl", pos.sl),
+                metadata.get("opening_sl"),
                 entry_price,
             )
-
         if entry_request.order_type == "bracket":
             is_buy = pos.type == PositionType.BUY
             expected_entry_price = entry_request.buy_stop if is_buy else entry_request.sell_stop
@@ -561,6 +560,12 @@ class StrategyRunner:
         buy_ticket: int,
         sell_ticket: int,
     ) -> None:
+        buy_stop = entry_request.buy_stop
+        sell_stop = entry_request.sell_stop
+        if buy_stop is None or sell_stop is None:
+            raise ValueError(
+                f"Bracket entry missing buy_stop or sell_stop: buy_stop={buy_stop!r}, sell_stop={sell_stop!r}"
+            )
         metadata: EntryMetadata = {
             "submission_time": submission_time,
             "volume_multiplier": volume_multiplier,
@@ -579,8 +584,8 @@ class StrategyRunner:
                     submission_time=submission_time,
                     buy_order_ticket=buy_ticket,
                     sell_order_ticket=sell_ticket,
-                    buy_stop=entry_request.buy_stop,
-                    sell_stop=entry_request.sell_stop,
+                    buy_stop=buy_stop,
+                    sell_stop=sell_stop,
                     expected_volume=entry_request.volume,
                 ),
             )
@@ -592,7 +597,7 @@ class StrategyRunner:
         volume_multiplier: float | None,
         submission_time: float,
         expected_entry_price: float,
-        opening_sl: float,
+        opening_sl: float | None,
     ) -> None:
         with self.position_state_lock:
             self.entry_metadata[trade_id] = {
@@ -726,7 +731,7 @@ class StrategyRunner:
         fill_data = self._build_fill_data(
             trade_id=trade_id,
             position=position_obj,
-            expected_entry_price=metadata["expected_entry_price"],
+            expected_entry_price=metadata.get("expected_entry_price", 0.0),
             opening_sl=metadata["opening_sl"],
             fill_time_ms=fill_latency_ms,
             volume_multiplier=metadata.get("volume_multiplier"),
@@ -746,11 +751,13 @@ class StrategyRunner:
         trade_id = self._generate_trade_id()
         with self.position_state_lock:
             self.entry_metadata[trade_id] = {
-                "expected_entry_price": pos.price_open,
-                "opening_sl": pos.sl,
                 "submission_time": time.time(),
                 "volume_multiplier": None,
                 "ticket": ticket,
+                "opening_sl": pos.sl,
+                "position_snapshot": None,
+                "expected_entry_price": pos.price_open,
+                "entry_request": None,
             }
             self.ticket_to_trade_id[ticket] = trade_id
         return trade_id
@@ -909,6 +916,11 @@ class StrategyRunner:
 
         original_volume = entry_request.volume
         adjusted_volume = self.risk_manager.validate_position_size(self.symbol, original_volume * volume_multiplier)
+        if adjusted_volume is None:
+            logger.warning(
+                f"{self.strategy_name:<9}: MetaLabelReject reason=invalid_pos_size | vol={original_volume * volume_multiplier:.4f}"  # noqa: E501
+            )
+            return None, entry_request.volume
         logger.info(
             f"{self.strategy_name:<9}: MetaLabel vol={original_volume:.4f} -> "
             f"{adjusted_volume:.4f} | mul={volume_multiplier:.3f}"
@@ -927,9 +939,18 @@ class StrategyRunner:
         if self.order_type == "bracket":
             sl_price = entry_request.buy_sl
             entry_price = entry_request.buy_stop
+            if entry_price is None or sl_price is None:
+                logger.error(
+                    f"{self.strategy_name:<9}: TradeReject reason=bracket_prices_missing"
+                    f" | buy_stop={entry_request.buy_stop} buy_sl={entry_request.buy_sl}"
+                )
+                return
         else:
             sl_price = entry_request.sl
             entry_price = data["Close"].iloc[-1]
+            if sl_price is None:
+                logger.error(f"{self.strategy_name:<9}: TradeReject reason=sl_missing")
+                return
 
         validation = self.risk_manager.validate_trade(
             strategy_name=self.strategy_name,
@@ -978,6 +999,9 @@ class StrategyRunner:
         trade_id = self._generate_trade_id()
 
         if self.order_type == "bracket":
+            assert result.order_tickets is not None, (
+                f"successful bracket execution must have order_tickets (trade_id={trade_id})"
+            )
             buy_ticket, sell_ticket = result.order_tickets
             self._store_entry_metadata_bracket(
                 trade_id, entry_request, volume_multiplier, submission_time, buy_ticket, sell_ticket
@@ -985,6 +1009,7 @@ class StrategyRunner:
             signal_str = "BRACKET"
         else:
             expected_entry_price = entry_request.entry_price or data["Close"].iloc[-1]
+            assert result.ticket is not None, f"successful standard execution must have ticket (trade_id={trade_id})"
             self._store_entry_metadata_standard(
                 trade_id,
                 result.ticket,
@@ -1227,8 +1252,8 @@ class StrategyRunner:
             ticket=ticket,
             expected_exit_price=expected_exit_price,
             exit_trigger=getattr(exit_request, "exit_reason", exit_context),
-            expected_entry_price=expected_entry_price,
-            opening_sl=opening_sl,
+            expected_entry_price=expected_entry_price if expected_entry_price is not None else entry_price,
+            opening_sl=opening_sl if opening_sl is not None else 0.0,
             entry_price=entry_price,
             deal_id=result.deal_id,
         )
@@ -1304,15 +1329,12 @@ class StrategyRunner:
             return
 
         if positions:
-            position_by_ticket = {pos["ticket"]: cache_entry_to_position(pos) for pos in positions}
-            results = self.executor.close_positions(
-                tickets=list(position_by_ticket.keys()),
-                preloaded_positions=position_by_ticket,
-            )
+            tickets_to_close = [pos["ticket"] for pos in positions]
+            results = self.executor.close_positions(tickets=tickets_to_close)
             successful = [t for t, (ok, _) in results.items() if ok]
             if successful:
                 self.known_positions.difference_update(successful)
-                logger.info(f"{self.strategy_name:<9}: ShutdownPos closed={len(successful)}/{len(position_by_ticket)}")
+                logger.info(f"{self.strategy_name:<9}: ShutdownPos closed={len(successful)}/{len(tickets_to_close)}")
 
         orders = self._get_strategy_orders_direct()
         if orders is None:

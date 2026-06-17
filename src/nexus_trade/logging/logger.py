@@ -12,7 +12,7 @@ import logging
 import sqlite3
 import threading
 import time
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -211,13 +211,15 @@ class TradeLogger:
                 )
 
             selected = open_rows[0]
-            reconciled[ticket] = {
-                "trade_id": selected[1],
-                "expected_entry_price": selected[2],
-                "opening_sl": selected[3],
-                "volume_multiplier": selected[4],
-            }
-
+            trade_id, expected_entry_price, opening_sl, volume_multiplier, _ = selected
+            assert isinstance(trade_id, int)
+            assert isinstance(expected_entry_price, float | int)
+            reconciled[ticket] = ReconciledTrade(
+                trade_id=int(trade_id),
+                expected_entry_price=float(expected_entry_price),
+                opening_sl=float(opening_sl) if isinstance(opening_sl, float | int) else None,
+                volume_multiplier=float(volume_multiplier) if isinstance(volume_multiplier, float | int) else None,
+            )
         return reconciled
 
     @contextmanager
@@ -565,7 +567,7 @@ class TradeLogger:
             if deals and len(deals) > 0:
                 deal_list: list[MT5Deal] = list(deals)
                 if entry_filter is not None:
-                    deal_list = [deal for deal in deal_list if getattr(deal, "entry", None) == entry_filter]
+                    deal_list = [deal for deal in deals if getattr(deal, "entry", None) == entry_filter]
                 return deal_list
             if attempt < max_retries - 1:
                 time.sleep(0.1 * (attempt + 1))
@@ -611,7 +613,7 @@ class TradeLogger:
         tick_size, tick_value, direction_multiplier = params
         return direction_multiplier * sum(spreads) * volume * (tick_value / tick_size)
 
-    def _get_commission(self, ticket: int | None, deals: list[MT5Deal]) -> float:
+    def _get_commission(self, ticket: int | None, deals: Sequence[MT5Deal]) -> float:
         """Query total commission from history deals."""
         return sum(
             float(getattr(deal, "commission", 0.0))
@@ -622,7 +624,7 @@ class TradeLogger:
     def _get_exit_deal_data(
         self,
         ticket: int,
-        deals: list[MT5Deal],
+        deals: Sequence[MT5Deal],
     ) -> dict[str, float] | None:
         """Retrieve exit price and gross P&L from historical trade deals."""
         exit_deals = [deal for deal in deals if getattr(deal, "entry", None) == MT5_DEAL_ENTRY_OUT]
@@ -638,10 +640,12 @@ class TradeLogger:
         self,
         entry_price: float,
         exit_price: float,
-        opening_sl: float,
+        opening_sl: float | None,
         position_type: int,
     ) -> float | None:
         """Calculate realized risk-reward ratio."""
+        if opening_sl is None:
+            return None
         try:
             if position_type == 0:  # BUY
                 risk = entry_price - opening_sl
