@@ -5,8 +5,7 @@ import threading
 from typing import TYPE_CHECKING, cast
 from zoneinfo import ZoneInfo
 
-from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES, string_to_timeframe
-from nexus_trade.core.types import RawStrategyConfig
+from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES
 
 if TYPE_CHECKING:
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
@@ -20,7 +19,6 @@ class StrategyConfigRegistry:
     """
 
     def __init__(self) -> None:
-        self._configs: dict[str, RawStrategyConfig] = {}
         self._full_configs: dict[str, StrategyConfig[BaseStrategyParams]] = {}
         self._tzs: dict[str, ZoneInfo] = {}
         self._timeframe_minutes: dict[str, int] = {}
@@ -28,35 +26,29 @@ class StrategyConfigRegistry:
 
     def get_strategy_config(self, strategy_name: str) -> StrategyConfig[BaseStrategyParams]:
         with self._lock:
-            _ = self.get_config(strategy_name)
-            return self._full_configs[strategy_name]
-
-    def get_config(self, strategy_name: str) -> RawStrategyConfig:
-        with self._lock:
-            if strategy_name not in self._configs:
+            if strategy_name not in self._full_configs:
                 module = cast(
                     "ConfigModule",
                     cast("object", importlib.import_module(f"nexus_trade.strategies.{strategy_name}.config")),
                 )
-
-                cfg: StrategyConfig[BaseStrategyParams] = module.get_config()
-                self._full_configs[strategy_name] = cfg
-                self._configs[strategy_name] = self._parse_config_from_obj(cfg)
-            return self._configs[strategy_name]
+                self._full_configs[strategy_name] = module.get_config()
+            return self._full_configs[strategy_name]
 
     def get_tz(self, strategy_name: str) -> ZoneInfo:
         with self._lock:
             if strategy_name not in self._tzs:
-                config = self.get_config(strategy_name)
-                tz_name: str = config.get("timezone") or "UTC"
+                cfg = self.get_strategy_config(strategy_name)
+                th = cfg.trading_hours
+                tz_name: str = (th.timezone if th is not None else None) or cfg.params.timezone or "UTC"
+
                 self._tzs[strategy_name] = ZoneInfo(tz_name)
             return self._tzs[strategy_name]
 
     def get_timeframe_minutes(self, strategy_name: str) -> int:
         with self._lock:
             if strategy_name not in self._timeframe_minutes:
-                config = self.get_config(strategy_name)
-                tf_str: str = config.get("timeframe")
+                cfg = self.get_strategy_config(strategy_name)
+                tf_str: str = cfg.params.timeframe
                 tf_key = TIMEFRAME_STRING_MAP.get(tf_str.upper())
                 if tf_key is None:
                     raise ValueError(f"Unknown timeframe string: {tf_str!r}")
@@ -66,33 +58,9 @@ class StrategyConfigRegistry:
     def invalidate(self, strategy_name: str) -> None:
         """Remove cached entries for a strategy (e.g. after hot-reload in tests)."""
         with self._lock:
-            _ = self._configs.pop(strategy_name, None)
             _ = self._full_configs.pop(strategy_name, None)
             _ = self._tzs.pop(strategy_name, None)
             _ = self._timeframe_minutes.pop(strategy_name, None)
-
-    @staticmethod
-    def _parse_config_from_obj(config: StrategyConfig[BaseStrategyParams]) -> RawStrategyConfig:
-        params = config.params
-        trading_hours = config.trading_hours
-        execution = config.execution
-        news_filter = config.filters.news
-        tf_key = string_to_timeframe(params.timeframe or "M15")
-
-        return RawStrategyConfig(
-            symbol=params.symbol,
-            timeframe=params.timeframe,
-            filter_enabled=trading_hours.enabled if trading_hours else False,
-            sessions=list(trading_hours.sessions) if trading_hours else [],
-            number_of_bars=params.backcandles + 1,
-            magic_number=execution.magic_number,
-            deviation=execution.deviation,
-            timezone=(trading_hours.timezone if trading_hours else None) or params.timezone,
-            news_filter_enabled=news_filter.enabled,
-            currencies=list(news_filter.currencies),
-            buffer_minutes=news_filter.buffer_minutes,
-            timeframe_minutes=int(TIMEFRAME_TO_MINUTES.get(tf_key, 15)) if tf_key else 15,
-        )
 
 
 # Module-level singleton — one instance per process (each strategy process gets its own).

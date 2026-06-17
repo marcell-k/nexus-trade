@@ -18,9 +18,11 @@ from nexus_trade.filters.news import NewsFilter
 if TYPE_CHECKING:
     from zoneinfo import ZoneInfo
 
+    from MetaTrader5 import AccountInfo, SymbolInfo
+
     from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, StrategyConfig
     from nexus_trade.core.data_handler import DataHandler
-    from nexus_trade.core.protocols import AccountInfo, AtomicInt, StrategyRunnerProtocol, SymbolInfo
+    from nexus_trade.core.protocols import AtomicInt, StrategyRunnerProtocol
     from nexus_trade.core.state import SharedState
 
 

@@ -114,13 +114,14 @@ class NewsFilter:
     def _load_configuration(self) -> None:
         """Load timezone and filter settings from strategy config."""
         self.broker_tz: ZoneInfo = self.data_handler.broker_tz
-        config = STRATEGY_CONFIG_REGISTRY.get_config(self.strategy_name)
-        tz_name: str | None = config.get("timezone")
+        cfg = STRATEGY_CONFIG_REGISTRY.get_strategy_config(self.strategy_name)
+        th = cfg.trading_hours
+        tz_name: str = (th.timezone if th is not None else None) or cfg.params.timezone
         self.strategy_tz: ZoneInfo = ZoneInfo(tz_name) if tz_name else self.broker_tz
-        self.symbol: str | None = config.get("symbol")
-        self.enabled: bool = bool(config.get("news_filter_enabled"))
-        self.filter_currencies: set[str] = set(config.get("currencies") or [])
-        self.buffer_minutes: int = int(config.get("buffer_minutes") or 0)
+        self.symbol: str = cfg.params.symbol
+        self.enabled: bool = cfg.filters.news.enabled
+        self.filter_currencies: set[str] = set(cfg.filters.news.currencies)
+        self.buffer_minutes: int = cfg.filters.news.buffer_minutes
         self._buffer_seconds: float = float(self.buffer_minutes * 60)
 
     def _is_cache_valid(self, cache_timestamp: float | None) -> bool:

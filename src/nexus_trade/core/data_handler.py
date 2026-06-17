@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from dataclasses import dataclass
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt5
 import numpy as np
@@ -9,7 +11,11 @@ import pandas as pd
 from nexus_trade.core.constants import TIMEFRAME_TO_MINUTES, TimeFrame, string_to_timeframe
 from nexus_trade.core.models import Tick
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
-from nexus_trade.core.types import RawStrategyConfig
+
+if TYPE_CHECKING:
+    from zoneinfo import ZoneInfo
+
+    from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
 
 
 @dataclass(slots=True)
@@ -30,22 +36,22 @@ class DataHandler:
         """Return cached rolling DataFrame, or None on miss."""
         return self._bar_rolling_windows.get(cache_key)
 
-    def _get_cache_capacity(self, strategy_config: RawStrategyConfig) -> int:
-        window_size = strategy_config["number_of_bars"]
-        if strategy_config.get("filter_enabled", False):
+    def _get_cache_capacity(self, strategy_config: StrategyConfig[BaseStrategyParams]) -> int:
+        window_size = strategy_config.params.backcandles + 1
+        if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
             return max(window_size, int(window_size * 1.3))
         return window_size
 
     def _return_cached_window(
-        self, cache_key: tuple[str, int], strategy_config: RawStrategyConfig
+        self, cache_key: tuple[str, int], strategy_config: StrategyConfig[BaseStrategyParams]
     ) -> pd.DataFrame | None:
         """Materialize cached window, apply session filter, and trim to size."""
         df = self._get_cached_window(cache_key)
         if df is None or len(df) == 0:
             return df
-        if strategy_config.get("filter_enabled", False):
+        if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
             df = self._filter_session_hours(df, strategy_config)
-        return df.tail(strategy_config["number_of_bars"])
+        return df.tail(strategy_config.params.backcandles + 1)
 
     def _update_cache_metadata(
         self, cache_key: tuple[str, int], bar_time_broker: pd.Timestamp, timeframe_minutes: int
@@ -99,9 +105,9 @@ class DataHandler:
         3. New bar (incremental): Fetch 1 bar from MT5, append to window
         4. Gap detected: Full refresh all bars
         """
-        strategy_config = STRATEGY_CONFIG_REGISTRY.get_config(strategy_name)
-        symbol = strategy_config["symbol"]
-        timeframe_mt5 = string_to_timeframe(strategy_config["timeframe"])
+        strategy_config = STRATEGY_CONFIG_REGISTRY.get_strategy_config(strategy_name)
+        symbol = strategy_config.params.symbol
+        timeframe_mt5 = string_to_timeframe(strategy_config.params.timeframe)
         cache_key: tuple[str, int] = (symbol, int(timeframe_mt5))
         strategy_tz = STRATEGY_CONFIG_REGISTRY.get_tz(strategy_name)
         now_broker = datetime.now(self.broker_tz)
@@ -139,7 +145,7 @@ class DataHandler:
     def _fetch_and_append_new_bar(
         self,
         symbol: str,
-        strategy_config: RawStrategyConfig,
+        strategy_config: StrategyConfig[BaseStrategyParams],
         cache_key: tuple[str, int],
         strategy_tz: ZoneInfo,
     ) -> pd.DataFrame | None:
@@ -182,7 +188,7 @@ class DataHandler:
         self._bar_rolling_windows[cache_key] = updated_df.tail(cache_capacity).copy()
 
         new_bar_time_broker = latest_complete_bar.index[0].tz_convert(self.broker_tz)
-        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)])
+        timeframe_minutes = TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)]
 
         self._update_cache_metadata(cache_key, new_bar_time_broker, timeframe_minutes)
 
@@ -191,7 +197,7 @@ class DataHandler:
     def _full_refresh_bars(
         self,
         symbol: str,
-        strategy_config: RawStrategyConfig,
+        strategy_config: StrategyConfig[BaseStrategyParams],
         cache_key: tuple[str, int],
         strategy_tz: ZoneInfo,
     ) -> pd.DataFrame | None:
@@ -205,27 +211,25 @@ class DataHandler:
 
         df_raw = self._create_tz_aware_dataframe(rates, strategy_tz)
         df_complete = self._filter_complete_bars(df_raw, strategy_config)
-
-        # Cache latest fetched bar first to avoid repeated MT5 polling while a bar forms.
-        timeframe_minutes = strategy_config.get("timeframe_minutes", TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)])
+        timeframe_minutes = TIMEFRAME_TO_MINUTES[TimeFrame(timeframe_mt5)]
 
         if len(df_complete) == 0:
             self._bar_rolling_windows[cache_key] = pd.DataFrame(columns=df_raw.columns)
             return pd.DataFrame(columns=df_raw.columns)
 
         self._bar_rolling_windows[cache_key] = df_complete.tail(fetch_count).copy()
-
-        # Use latest complete bar for elapsed-bar calculations.
         latest_complete_bar_time = df_complete.index[-1].tz_convert(self.broker_tz)
         self._update_cache_metadata(cache_key, latest_complete_bar_time, timeframe_minutes)
 
         return self._return_cached_window(cache_key, strategy_config)
 
-    def _filter_complete_bars(self, df: pd.DataFrame, strategy_config: RawStrategyConfig) -> pd.DataFrame:
+    def _filter_complete_bars(
+        self, df: pd.DataFrame, strategy_config: StrategyConfig[BaseStrategyParams]
+    ) -> pd.DataFrame:
         """Filter out incomplete bars (bars still forming)."""
         if not isinstance(df.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a DatetimeIndex")
-        timeframe_minutes = strategy_config.get("timeframe_minutes")
+        timeframe_minutes = TIMEFRAME_TO_MINUTES[string_to_timeframe(strategy_config.params.timeframe)]
         now_strategy = datetime.now(tz=df.index.tz)
 
         bar_close_times = df.index + pd.Timedelta(minutes=timeframe_minutes)
@@ -241,11 +245,14 @@ class DataHandler:
             return None
         return Tick.from_mt5(tick)
 
-    def _filter_session_hours(self, df: pd.DataFrame, strategy_config: RawStrategyConfig) -> pd.DataFrame:
+    def _filter_session_hours(
+        self, df: pd.DataFrame, strategy_config: StrategyConfig[BaseStrategyParams]
+    ) -> pd.DataFrame:
         """Filter bars to trading session hours. Handles midnight-spanning sessions (e.g., 23:00-01:00)."""
-        sessions = strategy_config.get("sessions", [])
-        if not strategy_config.get("filter_enabled", False) or not sessions:
+        th = strategy_config.trading_hours
+        if th is None or not th.enabled or not th.sessions:
             return df
+        sessions = th.sessions
 
         if not isinstance(df.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a DatetimeIndex")

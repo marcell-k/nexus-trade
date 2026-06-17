@@ -21,10 +21,10 @@ from zoneinfo import ZoneInfo
 
 import MetaTrader5 as mt
 import pandas as pd
+from MetaTrader5 import TradeDeal
 
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
 from nexus_trade.core.models import NormalizedPosition
-from nexus_trade.core.protocols import MT5Deal
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType, ReconciledTrade
 from nexus_trade.utils.format import format_price_display
@@ -558,12 +558,12 @@ class TradeLogger:
         context: str,
         max_retries: int = 3,
         entry_filter: int | None = None,
-    ) -> list[MT5Deal] | None:
+    ) -> list[TradeDeal] | None:
         """Retrieve history deals for a ticket with bounded retry backoff."""
         for attempt in range(max_retries):
             deals = mt.history_deals_get(position=ticket)
             if deals and len(deals) > 0:
-                deal_list: list[MT5Deal] = list(deals)
+                deal_list: list[TradeDeal] = list(deals)
                 if entry_filter is not None:
                     deal_list = [deal for deal in deals if getattr(deal, "entry", None) == entry_filter]
                 return deal_list
@@ -611,7 +611,7 @@ class TradeLogger:
         tick_size, tick_value, direction_multiplier = params
         return direction_multiplier * sum(spreads) * volume * (tick_value / tick_size)
 
-    def _get_commission(self, ticket: int | None, deals: Sequence[MT5Deal]) -> float:
+    def _get_commission(self, ticket: int | None, deals: Sequence[TradeDeal]) -> float:
         """Query total commission from history deals."""
         return sum(
             float(getattr(deal, "commission", 0.0))
@@ -622,7 +622,7 @@ class TradeLogger:
     def _get_exit_deal_data(
         self,
         ticket: int,
-        deals: Sequence[MT5Deal],
+        deals: Sequence[TradeDeal],
     ) -> dict[str, float] | None:
         """Retrieve exit price and gross P&L from historical trade deals."""
         exit_deals = [deal for deal in deals if getattr(deal, "entry", None) == MT5_DEAL_ENTRY_OUT]

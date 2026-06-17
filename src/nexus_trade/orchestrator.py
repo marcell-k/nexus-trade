@@ -30,9 +30,11 @@ from nexus_trade.utils.format import format_price_display, log_section_header
 if TYPE_CHECKING:
     from multiprocessing.managers import SyncManager
 
+    from MetaTrader5 import AccountInfo
+
     from nexus_trade.config.account import AccountConfig
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
-    from nexus_trade.core.protocols import AccountInfo, AtomicInt, ProcessLock
+    from nexus_trade.core.protocols import AtomicInt, ProcessLock
     from nexus_trade.core.state import SharedState
     from nexus_trade.core.types import (
         GlobalRiskPolicy,

@@ -12,7 +12,6 @@ if TYPE_CHECKING:
     from MetaTrader5 import MT5EntryRequest as MT5EntryRequest
     from MetaTrader5 import MT5Request as MT5Request
 
-    from nexus_trade.config.strategy import SessionConfig
     from nexus_trade.execution.request import EntryRequest
 
 
@@ -161,26 +160,6 @@ class ReconciledTrade(TypedDict):
     expected_entry_price: float
     opening_sl: float | None
     volume_multiplier: float | None
-
-
-class _RawStrategyConfigRequired(TypedDict):
-    symbol: str
-    timeframe: str
-    number_of_bars: int
-    magic_number: int
-    timezone: str
-    timeframe_minutes: int
-
-
-class RawStrategyConfig(_RawStrategyConfigRequired, total=False):
-    """Parsed strategy config dict produced by DataHandler._load_strategy_config."""
-
-    filter_enabled: bool | None
-    sessions: list[SessionConfig]
-    deviation: int | None
-    news_filter_enabled: bool | None
-    currencies: list[str] | None
-    buffer_minutes: int | None
 
 
 class NewsEvent(TypedDict, total=False):
