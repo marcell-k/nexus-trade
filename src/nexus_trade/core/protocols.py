@@ -74,15 +74,6 @@ class MT5Position(Protocol):
     time: int
 
 
-class XGBClassifierProtocol(Protocol):
-    """Structural protocol for ``xgboost.XGBClassifier``."""
-
-    _estimator_type: str
-
-    def load_model(self, fname: str) -> None: ...
-    def predict_proba(self, X: object) -> np.ndarray: ...
-
-
 class StrategyRunnerProtocol(Protocol):
     """Structural protocol for ``StrategyRunner`` — consumed by ``RiskManager`` to avoid import cycles."""
 
@@ -235,7 +226,7 @@ class SymbolInfo(Protocol):
 
 
 class SupportsPredictProba(Protocol):
-    """Protocol for models returning class probabilities (Platt, Beta, Stacking)."""
+    """Protocol for models returning class probabilities."""
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray: ...
 
@@ -246,7 +237,13 @@ class SupportsPredict(Protocol):
     def predict(self, X: pd.DataFrame) -> np.ndarray: ...
 
 
-class ClassifierWithProba(Protocol):
+class ClassifierWithProba(SupportsPredictProba, Protocol):
     """Protocol for the underlying ML classifier."""
 
-    def predict_proba(self, X: pd.DataFrame) -> np.ndarray: ...
+
+class XGBClassifierProtocol(SupportsPredictProba, Protocol):
+    """Structural protocol for ``xgboost.XGBClassifier``."""
+
+    _estimator_type: str
+
+    def load_model(self, fname: str) -> None: ...

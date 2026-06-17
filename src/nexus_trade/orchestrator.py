@@ -24,7 +24,7 @@ from nexus_trade.execution.executor import OrderExecutor
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.filters.news import preprocess_calendar_file
 from nexus_trade.risk.manager import DRAWDOWN_QUERY_START
-from nexus_trade.runner import run_strategy_process
+from nexus_trade.runner import RunnerConfig, run_strategy_process
 from nexus_trade.utils.format import format_price_display, log_section_header
 
 if TYPE_CHECKING:
@@ -242,22 +242,21 @@ class Orchestrator:
             else MetaLabelingCfg()
         )
 
-        process = Process(
-            target=run_strategy_process,
-            args=(
-                strategy_name,
-                config,
-                self.account_config,
-                self.global_risk_policy,
-                self.shared_state,
-                self.global_trade_count,
-                self.global_position_count,
-                self.position_cache_lock,
-                self.trade_id_db_path,
-                meta_cfg,
-                strategy_offset_seconds,
-            ),
+        runner_config = RunnerConfig(
+            strategy_name=strategy_name,
+            strategy_config=config,
+            broker_config=self.account_config,
+            global_risk_policy=self.global_risk_policy,
+            shared_state=self.shared_state,
+            global_trade_count=self.global_trade_count,
+            global_position_count=self.global_position_count,
+            position_cache_lock=self.position_cache_lock,
+            trade_id_db_path=self.trade_id_db_path,
+            meta_labeling=meta_cfg,
+            strategy_offset_seconds=strategy_offset_seconds,
         )
+
+        process = Process(target=run_strategy_process, args=(runner_config,))
         process.start()
         self.strategy_processes[strategy_name] = process
         logger.debug(f"ProcSpawn name={strategy_name} | pid={process.pid}")

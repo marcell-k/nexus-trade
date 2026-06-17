@@ -1394,47 +1394,21 @@ class StrategyRunner:
         return True
 
 
-def run_strategy_process(
-    strategy_name: str,
-    strategy_config: StrategyConfig[BaseStrategyParams],
-    broker_config: AccountConfig,
-    global_risk_policy: GlobalRiskPolicy,
-    shared_state: SharedState,
-    global_trade_count: AtomicInt,
-    global_position_count: AtomicInt,
-    position_cache_lock: ProcessLock,
-    trade_id_db_path: Path,
-    meta_labeling: MetaLabelingCfg,
-    strategy_offset_seconds: float = 0.0,
-) -> None:
+def run_strategy_process(config: RunnerConfig) -> None:
     """Entry point for ``multiprocessing.Process``."""
-    log_root = Path(global_risk_policy["log_root"])
+    log_root = Path(config.global_risk_policy["log_root"])
     log_root.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s - %(levelname)s - %(message)s",
         handlers=[
-            logging.FileHandler(log_root / f"{strategy_name}.log"),
+            logging.FileHandler(log_root / f"{config.strategy_name}.log"),
             logging.StreamHandler(),
         ],
     )
 
-    runner_config = RunnerConfig(
-        strategy_name=strategy_name,
-        strategy_config=strategy_config,
-        broker_config=broker_config,
-        global_risk_policy=global_risk_policy,
-        shared_state=shared_state,
-        global_trade_count=global_trade_count,
-        global_position_count=global_position_count,
-        position_cache_lock=position_cache_lock,
-        trade_id_db_path=trade_id_db_path,
-        meta_labeling=meta_labeling,
-        strategy_offset_seconds=strategy_offset_seconds,
-    )
-
-    runner = StrategyRunner(config=runner_config)
+    runner = StrategyRunner(config=config)
     try:
         runner.run()
     except Exception as error:
-        logger.exception(f"ProcCrash strat={strategy_name} | err={error}")
+        logger.exception(f"ProcCrash strat={config.strategy_name} | err={error}")

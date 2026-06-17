@@ -1,44 +1,42 @@
 from __future__ import annotations
 
-from typing import ClassVar, Literal
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import Field, computed_field
 
-
-class _Frozen(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, strict=True, extra="forbid")
+from nexus_trade.config._base import FrozenModel
 
 
-class ExecutionConfig(_Frozen):
+class ExecutionConfig(FrozenModel):
     magic_number: int = Field(gt=0)
     deviation: int = Field(ge=0, default=100)
     comment_prefix: str = Field(default="", max_length=15)
     min_market_threshold_points: int = Field(default=0, ge=0)
 
 
-class NewsFilterConfig(_Frozen):
+class NewsFilterConfig(FrozenModel):
     enabled: bool = False
     currencies: list[str] = Field(default_factory=list)
     buffer_minutes: int = Field(default=15, ge=0)
 
 
-class FiltersConfig(_Frozen):
+class FiltersConfig(FrozenModel):
     market_regime_enabled: bool = False
     news: NewsFilterConfig = Field(default_factory=NewsFilterConfig)
 
 
-class SessionConfig(_Frozen):
+class SessionConfig(FrozenModel):
     start: str = Field(pattern=r"^\d{2}:\d{2}$")
     end: str = Field(pattern=r"^\d{2}:\d{2}$")
 
 
-class TradingHoursConfig(_Frozen):
+class TradingHoursConfig(FrozenModel):
     enabled: bool = False
     timezone: str = "UTC"
     sessions: list[SessionConfig] = Field(default_factory=list)
 
 
-class RiskConfig(_Frozen):
+class RiskConfig(FrozenModel):
     position_sizing_method: Literal["fractional", "fixed"] = "fixed"
     max_positions: int = Field(default=1, gt=0)
     max_trades: int = Field(default=1, gt=0)
@@ -47,12 +45,12 @@ class RiskConfig(_Frozen):
     max_order_fill_time_seconds: int = Field(default=2, gt=0)
 
 
-class BaseStrategyParams(_Frozen):
+class BaseStrategyParams(FrozenModel):
     """
     Typed base for all strategy parameter models.
 
     Extend by subclassing and declaring additional fields — never instantiate directly
-    with undeclared kwargs. Inherits frozen=True, strict=True, extra="forbid" from _Frozen.
+    with undeclared kwargs. Inherits frozen=True, strict=True, extra="forbid" from FrozenModel.
 
     Example::
 
@@ -71,10 +69,9 @@ class BaseStrategyParams(_Frozen):
 StrategyOrderType = Literal["market", "limit", "stop", "bracket"]
 
 
-class StrategyConfig[T_Params: BaseStrategyParams](_Frozen):
+class StrategyConfig[T_Params: BaseStrategyParams](FrozenModel):
     name: str
     order_type: StrategyOrderType
-    strategy_module: str
     strategy_class: str
     symbol: str
     params: T_Params
@@ -82,6 +79,11 @@ class StrategyConfig[T_Params: BaseStrategyParams](_Frozen):
     filters: FiltersConfig = Field(default_factory=FiltersConfig)
     trading_hours: TradingHoursConfig | None
     risk: RiskConfig = Field(default_factory=RiskConfig)
+
+    @computed_field
+    @property
+    def strategy_module(self) -> str:
+        return f"nexus_trade.strategies.{self.name}.strategy"
 
     @classmethod
     def build(
@@ -97,11 +99,9 @@ class StrategyConfig[T_Params: BaseStrategyParams](_Frozen):
         trading_hours: TradingHoursConfig | None = None,
         risk: RiskConfig | None = None,
     ) -> StrategyConfig[T_Params]:
-        """Construct a StrategyConfig from parts; derive strategy_module from name."""
         return cls(
             name=name,
             order_type=order_type,
-            strategy_module=f"nexus_trade.strategies.{name}.strategy",
             strategy_class=strategy_class,
             symbol=symbol,
             params=params,

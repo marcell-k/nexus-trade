@@ -7,34 +7,31 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from pathlib import Path
-from typing import ClassVar
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import Field, field_validator
 
-
-class _Frozen(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, strict=True, extra="forbid")
+from nexus_trade.config._base import FrozenModel
 
 
-class DrawdownThresholdCfg(_Frozen):
+class DrawdownThresholdCfg(FrozenModel):
     drawdown_pct: float = Field(gt=0.0, le=1.0)
     risk_multiplier: float = Field(gt=0.0, le=1.0)
 
 
-class AdaptiveSizingCfg(_Frozen):
+class AdaptiveSizingCfg(FrozenModel):
     enabled: bool = False
     scope: str = "portfolio"
     thresholds: list[DrawdownThresholdCfg] = Field(default_factory=list)
 
 
-class MetaLabelingCfg(_Frozen):
+class MetaLabelingCfg(FrozenModel):
     enabled: bool = False
     use_calibration: bool = False
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
     recalculate_volume_on_bars: bool = False
 
 
-class StrategyCfg(_Frozen):
+class StrategyCfg(FrozenModel):
     enabled: bool
     risk_pct: float = Field(gt=0.0, description="Risk per trade as % of balance (1.0 = 1 %)")
     meta_labeling: MetaLabelingCfg = Field(default_factory=MetaLabelingCfg)
@@ -45,19 +42,19 @@ class StrategyCfg(_Frozen):
         return self.risk_pct / 100.0
 
 
-class LimitsCfg(_Frozen):
+class LimitsCfg(FrozenModel):
     max_total_positions: int = Field(gt=0)
     max_daily_trades: int = Field(gt=0)
     max_daily_drawdown_pct: float = Field(gt=0.0, le=1.0)
     max_drawdown_pct: float = Field(gt=0.0, le=1.0)
 
 
-class AccountCfg(_Frozen):
+class AccountCfg(FrozenModel):
     type: str = Field(min_length=1)
     initial_balance: int = Field(gt=0)
 
 
-class RiskProfile(_Frozen):
+class RiskProfile(FrozenModel):
     account: AccountCfg
     limits: LimitsCfg
     adaptive_sizing: AdaptiveSizingCfg = Field(default_factory=AdaptiveSizingCfg)
