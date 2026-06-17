@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Literal, cast
 import MetaTrader5 as mt
 import numpy as np
 
-from nexus_trade.config.risk import SYSTEM_TIMINGS
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES, TimeFrame
 from nexus_trade.core.data_handler import DataHandler
@@ -676,16 +676,6 @@ class StrategyRunner:
             resolved = self._resolve_pending_ticket(pos)
             if resolved is not None:
                 trade_id = resolved
-            else:
-                meta = self.entry_metadata.get(trade_id)
-                if meta is not None:
-                    meta["expected_entry_price"] = pos.price_open
-                    if meta.get("opening_sl") is None:
-                        meta["opening_sl"] = pos.sl
-                logger.warning(
-                    f"{self.strategy_name:<9}: BracketResolveFail t={ticket} | "
-                    f"action=patch_fill_price | px={pos.price_open}"
-                )
         if trade_id is None:
             trade_id = self._handle_orphaned_fill(ticket, pos)
             if trade_id is None:

@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt
 
-from nexus_trade.config.risk import SYSTEM_TIMINGS
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import GlobalRiskPolicy, NewsEvent, TTLCache
 from nexus_trade.filters.costs import MarketCostCalculator

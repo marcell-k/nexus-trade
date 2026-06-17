@@ -17,7 +17,7 @@ import MetaTrader5 as mt
 import numpy as np
 
 from nexus_trade.config.profile import MetaLabelingCfg, RiskProfile
-from nexus_trade.config.risk import SYSTEM_TIMINGS
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.repository import PositionRepository
 from nexus_trade.execution.executor import OrderExecutor
