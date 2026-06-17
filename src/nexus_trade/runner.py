@@ -177,9 +177,7 @@ class StrategyRunner:
             raise RuntimeError(f"SetupFail strat={self.strategy_name} | step=mt5_connect")
 
         strategy_class = self._load_strategy_class()
-        self.strategy = cast(
-            "StrategyProtocol", strategy_class(params=self.config.params, strategy_name=self.strategy_name)
-        )
+        self.strategy = cast("StrategyProtocol", strategy_class(params=self.config.params))
 
         self.data_handler = DataHandler(self.broker_tz)
         self.executor = OrderExecutor(self.broker_tz)

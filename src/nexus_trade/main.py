@@ -8,13 +8,15 @@ import os
 import signal
 import sys
 from pathlib import Path
-from types import FrameType
-from typing import Final, Never
+from typing import TYPE_CHECKING, Final, Never
 
 from nexus_trade.config.account import load_account_config_from_env, load_env_file
 from nexus_trade.config.profile import load_profile
 from nexus_trade.utils.format import log_section_header
 from nexus_trade.utils.system import WindowsInhibitor
+
+if TYPE_CHECKING:
+    from types import FrameType
 
 CONFIG_DIR: Final[Path] = Path("~/.config/mt5-trading").expanduser()
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
@@ -88,11 +90,12 @@ def main() -> int:
 
     clean_env_name = _clean_env_name(env_path)
     log_root = PROJECT_ROOT / "logs" / clean_env_name
+    relative_log_path = log_root.relative_to(PROJECT_ROOT)
     setup_logging(log_root, clean_env_name)
 
     log_section_header(
         logger,
-        f"TRADING SYSTEM STARTING | Config: {env_path.name} | Log dir: {log_root}",
+        f"TRADING SYSTEM STARTING | Config: {env_path.name} | Log dir: {relative_log_path}",
         level=logging.INFO,
     )
 

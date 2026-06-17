@@ -22,7 +22,6 @@ from nexus_trade.core.constants import (
 from nexus_trade.core.models import NormalizedPosition, Tick, normalize_order
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.symbol import SymbolSpec, SymbolSpecCache
-from nexus_trade.core.types import MT5EntryRequest, MT5Request
 from nexus_trade.execution.request import (
     EntryRequest,
     ExecutionResult,
@@ -35,10 +34,10 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from zoneinfo import ZoneInfo
 
-    from MetaTrader5 import OrderSendResult, TradePosition
+    from MetaTrader5 import MT5EntryRequest, MT5Request, OrderSendResult, TradePosition  # noqa: TC004
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
-    from nexus_trade.core.types import MT5EntryRequest, MT5Tick, OrderSnapshot, PositionCacheEntry
+    from nexus_trade.core.types import MT5Tick, OrderSnapshot, PositionCacheEntry
 
 
 logger = logging.getLogger(__name__)
