@@ -4,7 +4,7 @@
 
 Run multiple independent strategies in parallel — each isolated in its own process, all sharing a portfolio-level risk policy enforced in real time.
 
-> ⚠️ **Windows only.** The MetaTrader 5 Python API ships as a Windows DLL. NexusTrade wraps it without compromise.
+> **Windows only.** The MetaTrader 5 Python API ships as a Windows DLL. NexusTrade wraps it without compromise.
 
 ---
 

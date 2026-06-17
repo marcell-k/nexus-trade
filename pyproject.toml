@@ -12,8 +12,9 @@ dependencies = [
     "pydantic>=2.0",
 ]
 
-[project.optional-dependencies]
+[dependency-groups]
 dev = [
+    "basedpyright>=1.39.8",
     "pytest>=9.0.3",
     "ruff>=0.4",
 ]
@@ -38,6 +39,7 @@ ignore = ["ANN401", "D100", "D101", "D102", "D103", "D104", "D107", "D203", "D21
 
 # --- Basedpyright configuration goes here ---
 [tool.basedpyright]
+typeCheckingMode = "standard"
 venvPath = "."
 venv = ".venv"
 exclude=["tests/**"]
