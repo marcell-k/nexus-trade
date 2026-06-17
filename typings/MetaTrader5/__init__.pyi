@@ -1,10 +1,8 @@
 from datetime import datetime
-from typing import NamedTuple, overload
+from typing import NamedTuple, TypedDict, overload
 
 import numpy as np
 import numpy.typing as npt
-
-from nexus_trade.core.types import MT5EntryRequest, MT5Request
 
 TIMEFRAME_M1: int
 TIMEFRAME_M2: int
@@ -174,6 +172,42 @@ class OrderSendResult(NamedTuple):
     comment: str
     request_id: int
     retcode_external: int
+
+class MT5EntryRequest(TypedDict):
+    """Required fields for all entry orders (market, pending, bracket)."""
+
+    action: int
+    symbol: str
+    volume: float
+    type: int
+    price: float
+    type_filling: int
+    type_time: int
+    sl: float
+    tp: float
+    deviation: int
+    magic: int
+    comment: str
+
+class MT5Request(TypedDict, total=False):
+    """Sparse request dict for non-entry operations: modify, cancel, close."""
+
+    action: int
+    symbol: str
+    position: int
+    order: int
+    sl: float
+    tp: float
+    volume: float
+    type: int
+    price: float
+    type_filling: int
+    type_time: int
+    magic: int
+    comment: str
+    expiration: int
+    stoplimit: float
+    deviation: int
 
 class TerminalInfo(NamedTuple):
     community_account: bool

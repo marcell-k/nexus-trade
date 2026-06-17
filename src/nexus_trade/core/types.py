@@ -9,8 +9,10 @@ if TYPE_CHECKING:
     from datetime import datetime
     from datetime import time as dt_time
 
+    from MetaTrader5 import MT5EntryRequest as MT5EntryRequest
+    from MetaTrader5 import MT5Request as MT5Request
+
     from nexus_trade.config.strategy import SessionConfig
-    from nexus_trade.core.constants import OrderFilling, OrderType, TimeInForce, TradeAction
     from nexus_trade.execution.request import EntryRequest
 
 
@@ -189,41 +191,3 @@ class NewsEvent(TypedDict, total=False):
     event_name: str
     priority: str
     minutes_until: float
-
-
-class MT5EntryRequest(TypedDict):
-    """Required fields for all entry orders (market, pending, bracket)."""
-
-    action: TradeAction
-    symbol: str
-    volume: float
-    type: OrderType
-    price: float
-    type_filling: OrderFilling
-    type_time: TimeInForce
-    sl: float
-    tp: float
-    deviation: int
-    magic: int
-    comment: str
-
-
-class MT5Request(TypedDict, total=False):
-    """Sparse request dict for non-entry operations: modify, cancel, close."""
-
-    action: TradeAction
-    symbol: str
-    position: int
-    order: int
-    sl: float
-    tp: float
-    volume: float
-    type: OrderType
-    price: float
-    type_filling: OrderFilling
-    type_time: TimeInForce
-    magic: int
-    comment: str
-    expiration: int
-    stoplimit: float
-    deviation: int
