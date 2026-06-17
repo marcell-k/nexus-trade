@@ -19,9 +19,8 @@ from nexus_trade.core.constants import (
     TimeInForce,
     TradeAction,
 )
-from nexus_trade.core.models import NormalizedPosition, Tick
+from nexus_trade.core.models import NormalizedPosition, Tick, normalize_order
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
-from nexus_trade.core.state import normalize_order
 from nexus_trade.core.symbol import SymbolSpec, SymbolSpecCache
 from nexus_trade.core.types import MT5EntryRequest, MT5Request
 from nexus_trade.execution.request import (

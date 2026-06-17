@@ -6,7 +6,8 @@ import time
 
 import pytest
 
-from nexus_trade.core.state import OrderSnapshot, TTLCache, normalize_order
+from nexus_trade.core.models import normalize_order
+from nexus_trade.core.state import OrderSnapshot, TTLCache
 
 #  TTLCache
 

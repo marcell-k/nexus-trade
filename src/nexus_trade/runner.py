@@ -73,23 +73,6 @@ _CACHE_STALENESS_THRESHOLD: int = SYSTEM_TIMINGS.cache_staleness_threshold
 _BRACKET_EXPIRY_GRACE_SECONDS: int = 30
 
 
-def _position_to_cache_entry(pos: Position) -> PositionCacheEntry:
-    """Convert a Pydantic ``Position`` model to a ``PositionCacheEntry``."""
-    return PositionCacheEntry(
-        ticket=pos.ticket,
-        symbol=pos.symbol,
-        type=0 if pos.type == PositionType.BUY else 1,
-        volume=pos.volume,
-        price_open=pos.price_open,
-        sl=pos.sl if pos.sl is not None else 0.0,
-        tp=pos.tp if pos.tp is not None else 0.0,
-        profit=pos.profit,
-        swap=0.0,
-        magic=pos.magic,
-        time=0,
-    )
-
-
 @dataclass
 class RunnerConfig:
     """Consolidated configuration for ``StrategyRunner`` initialization."""
@@ -194,7 +177,9 @@ class StrategyRunner:
             raise RuntimeError(f"SetupFail strat={self.strategy_name} | step=mt5_connect")
 
         strategy_class = self._load_strategy_class()
-        self.strategy = cast("StrategyProtocol", strategy_class(params=self.config.params))
+        self.strategy = cast(
+            "StrategyProtocol", strategy_class(params=self.config.params, strategy_name=self.strategy_name)
+        )
 
         self.data_handler = DataHandler(self.broker_tz)
         self.executor = OrderExecutor(self.broker_tz)
@@ -390,7 +375,7 @@ class StrategyRunner:
             "volume_multiplier": volume_multiplier,
             "ticket": ticket,
             "opening_sl": opening_sl if opening_sl is not None else pos.sl,
-            "position_snapshot": _position_to_cache_entry(pos),
+            "position_snapshot": pos.to_cache_entry(),
             "expected_entry_price": expected_entry_price if expected_entry_price is not None else pos.price_open,
             "entry_request": None,
         }
@@ -440,7 +425,7 @@ class StrategyRunner:
             for pos, trade_id in zip(missing_positions, new_trade_ids, strict=True):
                 self._seed_startup_position_tracking(trade_id=trade_id, pos=pos, submission_time=current_time)
                 metadata = self.entry_metadata[trade_id]
-                position_obj = _position_to_cache_entry(pos)
+                position_obj = pos.to_cache_entry()
                 fill_data = self._build_fill_data(
                     trade_id=trade_id,
                     position=position_obj,
@@ -720,14 +705,14 @@ class StrategyRunner:
 
         new_trades = self.atomic_increment_trade()
 
-        position_snapshot = _position_to_cache_entry(pos)
+        position_snapshot = pos.to_cache_entry()
         metadata["position_snapshot"] = position_snapshot
         metadata["ticket"] = ticket
 
         submission_time = metadata.get("submission_time")
         fill_latency_ms = (time.time() - submission_time) * 1000 if submission_time else None
 
-        position_obj = _position_to_cache_entry(pos)
+        position_obj = pos.to_cache_entry()
         fill_data = self._build_fill_data(
             trade_id=trade_id,
             position=position_obj,
@@ -1156,7 +1141,7 @@ class StrategyRunner:
         self.trade_logger.log_partial_close(partial_data)
 
         if trade_id in self.entry_metadata:
-            self.entry_metadata[trade_id]["position_snapshot"] = _position_to_cache_entry(updated_position)
+            self.entry_metadata[trade_id]["position_snapshot"] = updated_position.to_cache_entry()
 
         logger.info(
             f"{self.strategy_name:<9}: PARTIAL CLOSE id={trade_id} | t={data.ticket} | "
@@ -1171,7 +1156,7 @@ class StrategyRunner:
         if trade_id is not None:
             close_data = self._build_close_data(
                 trade_id=trade_id,
-                position=_position_to_cache_entry(pos),
+                position=pos.to_cache_entry(),
                 expected_exit_price=data.expected_exit_price,
                 opening_sl=data.opening_sl,
                 exit_trigger=data.exit_trigger,

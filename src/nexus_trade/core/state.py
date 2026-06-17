@@ -2,12 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypedDict, TypeVar
 
-from nexus_trade.core.types import OrderSnapshot
-
 if TYPE_CHECKING:
     from datetime import date
-
-    from MetaTrader5 import TradeOrder
 
     from nexus_trade.core.types import PositionCacheEntry
 
@@ -71,13 +67,3 @@ _POSITION_DEFAULTS: PositionCacheEntry = {
     "time": 0,
 }
 _ORDER_FIELDS: tuple[str, ...] = ("ticket", "symbol", "type", "magic")
-
-
-def normalize_order(order: TradeOrder) -> OrderSnapshot:
-    """Convert MT5 order namedtuple to standardized ``OrderSnapshot``."""
-    return OrderSnapshot(
-        ticket=int(order.ticket),
-        symbol=str(order.symbol),
-        type=int(order.type),
-        magic=int(order.magic),
-    )

@@ -18,6 +18,17 @@ class PositionType(Enum):
     BUY = "BUY"
     SELL = "SELL"
 
+    def as_int(self) -> int:
+        return 0 if self is PositionType.BUY else 1
+
+    @staticmethod
+    def from_int(value: int) -> PositionType:
+        if value == 0:
+            return PositionType.BUY
+        if value == 1:
+            return PositionType.SELL
+        raise ValueError(f"Invalid PositionType int: {value}")
+
 
 class MT5Tick(Protocol):
     @property

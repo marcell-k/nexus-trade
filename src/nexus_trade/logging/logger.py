@@ -26,11 +26,7 @@ from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
 from nexus_trade.core.models import NormalizedPosition
 from nexus_trade.core.protocols import MT5Deal
 from nexus_trade.core.symbol import SymbolSpec, get_symbol_spec
-from nexus_trade.core.types import (
-    PartialClosePositionSnapshot,
-    PositionCacheEntry,
-    ReconciledTrade,
-)
+from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType, ReconciledTrade
 from nexus_trade.utils.format import format_price_display
 
 logger = logging.getLogger(__name__)
@@ -243,7 +239,9 @@ class TradeLogger:
         """Log position fill with unique trade_id."""
         entry_date, entry_time = self._format_datetime(datetime.now(tz=self.strategy_tz))
 
-        size = data.position["volume"] if data.position["type"] == 0 else -data.position["volume"]
+        size = (
+            data.position["volume"] if data.position["type"] == PositionType.BUY.as_int() else -data.position["volume"]
+        )
         entry_spread = data.position["price_open"] - data.expected_entry_price
         slippage_cost = self._calculate_slippage_cost(
             data.position["symbol"], data.position["volume"], data.position["type"], entry_spread
@@ -280,7 +278,7 @@ class TradeLogger:
                     data.position["tp"] if data.position["tp"] != 0.0 else None,
                     slippage_cost,
                     fill_time_mseconds,
-                    "BUY" if data.position["type"] == 0 else "SELL",
+                    "BUY" if data.position["type"] == PositionType.BUY.as_int() else "SELL",
                     data.volume_multiplier,
                 ),
             )
@@ -447,7 +445,7 @@ class TradeLogger:
                     net_pnl,
                     slippage_cost,
                     original["fill_time_mseconds"],
-                    "BUY" if position.type == 0 else "SELL",
+                    "BUY" if position.type == PositionType.BUY.as_int() else "SELL",
                     data.exit_trigger,
                     original["volume_multiplier"],
                 ),

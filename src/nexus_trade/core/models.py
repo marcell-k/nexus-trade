@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 
-from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType
+from nexus_trade.core.types import (
+    OrderSnapshot,
+    PartialClosePositionSnapshot,
+    PositionCacheEntry,
+    PositionType,
+)
 
 if TYPE_CHECKING:
     from nexus_trade.core.constants import OrderType
@@ -28,6 +33,21 @@ class Position:
     sl: float | None
     tp: float | None
     profit: float
+
+    def to_cache_entry(self) -> PositionCacheEntry:
+        return PositionCacheEntry(
+            ticket=self.ticket,
+            symbol=self.symbol,
+            type=self.type.as_int(),
+            volume=self.volume,
+            price_open=self.price_open,
+            sl=self.sl if self.sl is not None else 0.0,
+            tp=self.tp if self.tp is not None else 0.0,
+            profit=self.profit,
+            swap=0.0,
+            magic=self.magic,
+            time=0,
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,7 +197,7 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
     return Position(
         ticket=entry["ticket"],
         symbol=entry["symbol"],
-        type=PositionType.BUY if entry["type"] == 0 else PositionType.SELL,
+        type=PositionType.from_int(entry["type"]),
         magic=entry["magic"],
         volume=entry["volume"],
         price_open=entry["price_open"],
@@ -188,7 +208,7 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
     )
 
 
-@dataclass
+@dataclass(slots=True)
 class ExitLogData:
     """Parameters for exit logging operations."""
 
@@ -201,3 +221,13 @@ class ExitLogData:
     executed_volume: float | None = None
     closed_volume: float | None = None
     deal_id: int | None = None
+
+
+def normalize_order(order: object) -> OrderSnapshot:
+    """Convert MT5 order namedtuple to standardized ``OrderSnapshot``."""
+    return OrderSnapshot(
+        ticket=int(getattr(order, "ticket", 0)),
+        symbol=str(getattr(order, "symbol", "")),
+        type=int(getattr(order, "type", 0)),
+        magic=int(getattr(order, "magic", 0)),
+    )

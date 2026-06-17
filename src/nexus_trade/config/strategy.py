@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import ClassVar, Literal, TypeVar
+from typing import ClassVar, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -67,9 +67,6 @@ class BaseStrategyParams(_Frozen):
     timeframe: str = "M15"
     timezone: str = "UTC"
 
-
-# Legacy TypeVar kept for annotation sites that haven't migrated to PEP 695 syntax.
-T_Params = TypeVar("T_Params", bound=BaseStrategyParams)
 
 StrategyOrderType = Literal["market", "limit", "stop", "bracket"]
 

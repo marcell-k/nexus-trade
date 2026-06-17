@@ -8,12 +8,12 @@ from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt
 
-from nexus_trade.core.models import NormalizedPosition
+from nexus_trade.core.models import NormalizedPosition, normalize_order
 
 if TYPE_CHECKING:
     from nexus_trade.core.protocols import ProcessLock
+    from nexus_trade.core.state import SharedState
     from nexus_trade.core.types import OrderSnapshot, PositionCacheEntry
-from nexus_trade.core.state import SharedState, normalize_order
 
 logger = logging.getLogger(__name__)
 
