@@ -159,7 +159,6 @@ class DataHandler:
         rates: np.ndarray,
         ring: _RingBuffer,
         strategy_tz: ZoneInfo,
-        strategy_config: StrategyConfig[BaseStrategyParams],
         timeframe_minutes: int,
         *,
         append_only: bool = False,
@@ -187,7 +186,7 @@ class DataHandler:
 
         # Convert UTC ns → strategy tz ns
         utc_index = pd.DatetimeIndex(ts_utc_ns.astype("datetime64[ns]"), tz="UTC")
-        strategy_index_ns = utc_index.tz_convert(strategy_tz).asi8  # int64 ns
+        strategy_index_ns = utc_index.tz_convert(strategy_tz).values.astype("int64")
 
         complete_mask = bar_close_ns <= cutoff_ns
         if not complete_mask.any():
@@ -308,7 +307,7 @@ class DataHandler:
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
         prev_size = ring.size
-        self._load_rates_into_ring(rates, ring, strategy_tz, strategy_config, timeframe_minutes, append_only=True)
+        self._load_rates_into_ring(rates, ring, strategy_tz, timeframe_minutes, append_only=True)
 
         if ring.size == prev_size:
             # No new complete bar appended
@@ -336,7 +335,7 @@ class DataHandler:
         if rates is None or len(rates) == 0:
             return None
 
-        self._load_rates_into_ring(rates, ring, strategy_tz, strategy_config, timeframe_minutes, append_only=False)
+        self._load_rates_into_ring(rates, ring, strategy_tz, timeframe_minutes, append_only=False)
 
         if ring.is_empty:
             return None

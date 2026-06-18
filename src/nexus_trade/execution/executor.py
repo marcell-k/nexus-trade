@@ -34,7 +34,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from zoneinfo import ZoneInfo
 
-    from MetaTrader5 import MT5EntryRequest, MT5Request, OrderSendResult, TradePosition  # noqa: TC004
+    from MetaTrader5 import MT5EntryRequest, MT5Request, OrderSendResult, TradePosition
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.types import MT5Tick, OrderSnapshot, PositionCacheEntry
@@ -669,7 +669,7 @@ class OrderExecutor:
         return True
 
     def _cancel_order(self, ticket: int) -> bool:
-        result = self._order_send_with_retry(MT5Request(action=TradeAction.REMOVE, order=ticket))
+        result = self._order_send_with_retry({"action": TradeAction.REMOVE, "order": ticket})
         return bool(result and result.retcode == self._retcode_done)
 
     def cancel_bracket_orders(

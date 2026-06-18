@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import sys
-import time
-from collections.abc import Callable, Generator
-from contextlib import ExitStack
-from typing import NamedTuple
+from contextlib import ExitStack, suppress
+from typing import TYPE_CHECKING, NamedTuple
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Generator
+
+    from nexus_trade.core.types import PositionCacheEntry
 
 
 class _AccountInfo(NamedTuple):
@@ -71,15 +74,9 @@ class _SymbolInfo(NamedTuple):
     time: int = 1_700_000_000
 
 
-# ---------------------------------------------------------------------------
-# MT5 mock builder
-# ---------------------------------------------------------------------------
-
-
 def _build_mt5_mock() -> MagicMock:
     mock = MagicMock(name="MetaTrader5")
 
-    # Position / deal / order constants
     mock.POSITION_TYPE_BUY = 0
     mock.POSITION_TYPE_SELL = 1
     mock.DEAL_TYPE_BUY = 0
@@ -95,8 +92,6 @@ def _build_mt5_mock() -> MagicMock:
     mock.ORDER_TYPE_SELL_STOP = 5
     mock.ORDER_TYPE_BUY_STOP_LIMIT = 6
     mock.ORDER_TYPE_SELL_STOP_LIMIT = 7
-
-    # Filling / action / time-in-force constants
     mock.ORDER_FILLING_FOK = 0
     mock.ORDER_FILLING_IOC = 1
     mock.ORDER_FILLING_RETURN = 2
@@ -113,7 +108,6 @@ def _build_mt5_mock() -> MagicMock:
     mock.ORDER_TIME_SPECIFIED_DAY = 3
     mock.TRADE_RETCODE_NO_CHANGES = 10025
 
-    # Default API return values
     mock.account_info.return_value = _AccountInfo()
     mock.positions_get.return_value = ()
     mock.orders_get.return_value = ()
@@ -139,125 +133,72 @@ def _build_mt5_mock() -> MagicMock:
     return mock
 
 
-# ---------------------------------------------------------------------------
-# mt5_mock
-# Patches:
-#   sys.modules["MetaTrader5"]       — so test bodies can do sys.modules["MetaTrader5"]
-#   each module-level alias          — ``import MetaTrader5 as mt5`` or ``as mt``
-# Targets with no matching attr are skipped silently (safe to add extras).
-# ---------------------------------------------------------------------------
+_PATCH_TARGETS: tuple[str, ...] = (
+    "nexus_trade.core.data_handler.mt5",
+    "nexus_trade.core.connection.mt5",
+    "nexus_trade.core.repository.mt",
+    "nexus_trade.core.symbol.mt",
+    "nexus_trade.core.constants.mt",
+    "nexus_trade.filters.costs.mt",
+    "nexus_trade.logging.logger.mt",
+    "nexus_trade.risk.manager.mt",
+    "nexus_trade.execution.executor.mt",
+)
 
 
 @pytest.fixture
 def mt5_mock() -> Generator[MagicMock]:
-    # Run ``grep -r "import MetaTrader5" src/`` to verify / extend this list.
-    # Suffix must match the alias used in that module (mt5 or mt).
-    _patch_targets: tuple[str, ...] = (
-        "nexus_trade.core.data_handler.mt5",  # import MetaTrader5 as mt5
-        "nexus_trade.core.connection.mt5",  # import MetaTrader5 as mt5
-        "nexus_trade.core.repository.mt",  # import MetaTrader5 as mt
-        "nexus_trade.core.symbol.mt",  # import MetaTrader5 as mt
-        "nexus_trade.core.constants.mt",  # import MetaTrader5 as mt
-        "nexus_trade.filters.costs.mt",  # import MetaTrader5 as mt
-        "nexus_trade.logging.logger.mt",  # import MetaTrader5 as mt
-        "nexus_trade.risk.manager.mt",  # import MetaTrader5 as mt
-        "nexus_trade.execution.executor.mt",  # import MetaTrader5 as mt
-    )
     mock = _build_mt5_mock()
     with ExitStack() as stack:
-        # Lets test bodies access the mock via sys.modules["MetaTrader5"]
         stack.enter_context(patch.dict(sys.modules, {"MetaTrader5": mock}))
-        for target in _patch_targets:
-            try:
+        for target in _PATCH_TARGETS:
+            with suppress(ImportError, AttributeError):
                 stack.enter_context(patch(target, mock))
-            except AttributeError:
-                pass  # module does not import mt5/mt directly — safe to skip
         yield mock
-
-
-# ---------------------------------------------------------------------------
-# Named fixtures consumed by test_risk_manager.py
-# ---------------------------------------------------------------------------
 
 
 @pytest.fixture
 def account_info() -> _AccountInfo:
-    """Default AccountInfo namedtuple. Supports ._replace() for param variation."""
     return _AccountInfo()
 
 
 @pytest.fixture
 def eurusd_info() -> _SymbolInfo:
-    """EURUSD SymbolInfo namedtuple used in position-sizing tests."""
     return _SymbolInfo()
 
 
-# ---------------------------------------------------------------------------
-# Symbol spec cache isolation
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture(autouse=True)
-def _clear_symbol_cache() -> Generator[None]:
-    """Wipe the process-local SymbolSpec cache before and after every test."""
-    try:
-        from nexus_trade.core.symbol import _symbol_cache
-
-        _symbol_cache.clear()
-    except ImportError:
-        pass
-    yield
-    try:
-        from nexus_trade.core.symbol import _symbol_cache
-
-        _symbol_cache.clear()
-    except ImportError:
-        pass
-
-
-# ---------------------------------------------------------------------------
-# Position cache entry factory
-# ---------------------------------------------------------------------------
-
-_PositionCacheEntry = dict[str, object]
-
-
 @pytest.fixture
-def make_position_cache_entry() -> Callable[..., _PositionCacheEntry]:
-    """Factory for position-cache entry dicts.
-
-    Default magic=12345 matches the magic used by test_repository queries.
-    Override any field via keyword arg::
-
-        make_position_cache_entry(symbol="GBPUSD", magic=2002)
-    """
+def make_position_cache_entry() -> Callable[..., PositionCacheEntry]:
+    """Create PositionCacheEntry TypedDicts matching the actual type definition."""
 
     def _factory(
         *,
         ticket: int = 100_001,
         symbol: str = "EURUSD",
         magic: int = 12345,
-        position_type: int = 0,
+        type: int = 0,
         volume: float = 0.10,
         price_open: float = 1.10000,
         sl: float = 1.09900,
         tp: float = 1.10200,
         profit: float = 0.0,
-        time_open: float | None = None,
-        is_open: bool = True,
-    ) -> _PositionCacheEntry:
-        return {
-            "ticket": ticket,
-            "symbol": symbol,
-            "magic": magic,
-            "position_type": position_type,
-            "volume": volume,
-            "price_open": price_open,
-            "sl": sl,
-            "tp": tp,
-            "profit": profit,
-            "time_open": time_open if time_open is not None else time.time(),
-            "is_open": is_open,
-        }
+        swap: float = 0.0,
+        time: int = 0,
+    ) -> PositionCacheEntry:
+        from nexus_trade.core.types import PositionCacheEntry as PCE
+
+        return PCE(
+            ticket=ticket,
+            symbol=symbol,
+            type=type,
+            volume=volume,
+            price_open=price_open,
+            sl=sl,
+            tp=tp,
+            profit=profit,
+            swap=swap,
+            magic=magic,
+            time=time,
+        )
 
     return _factory

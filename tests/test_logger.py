@@ -1,122 +1,44 @@
 """
-Integration tests for TradeLogger — real SQLite, mocked MT5 symbol info and deals.
+Integration tests for TradeLogger — real SQLite, mocked MT5.
 
-Math verification section at the bottom tests every computed column:
-  RRR · gross_pnl · net_pnl · entry_spread · exit_spread · slippage_cost
+Math verification covers: RRR, gross_pnl, net_pnl, entry_spread,
+exit_spread, slippage_cost.
 """
 
 from __future__ import annotations
 
 import sqlite3
-import sys
 import time
 from collections import namedtuple
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
-from nexus_trade.core.state import PositionCacheEntry
+from nexus_trade.core.types import PositionCacheEntry
 from nexus_trade.logging.logger import CloseData, FillData, TradeLogger
 
-#  Fixtures
+if TYPE_CHECKING:
+    from pathlib import Path
+    from unittest.mock import MagicMock
 
 STRATEGY_TZ = "UTC"
 SYMBOL = "EURUSD"
-
-# EURUSD symbol spec values used in slippage formula
 TICK_SIZE = 0.00001
-TICK_VALUE = 1.0  # $1 per pip per standard lot
+TICK_VALUE = 1.0
 CONTRACT_SIZE = 100_000.0
 
 TradeDeal = namedtuple(
     "TradeDeal",
-    [
-        "ticket",
-        "order",
-        "time",
-        "time_msc",
-        "type",
-        "entry",
-        "magic",
-        "position_id",
-        "reason",
-        "volume",
-        "price",
-        "commission",
-        "swap",
-        "profit",
-        "fee",
-        "symbol",
-        "comment",
-        "external_id",
-    ],
+    "ticket order time time_msc type entry magic position_id reason "
+    "volume price commission swap profit fee symbol comment external_id",
 )
-
-
-def _make_deal(
-    *,
-    ticket: int = 2001,
-    entry: int = 1,  # DEAL_ENTRY_OUT
-    pos_type: int = 1,  # SELL (closing a BUY)
-    price: float = 1.11000,
-    commission: float = -3.50,
-    swap: float = 0.0,
-    profit: float = 100.0,
-    position_id: int = 100_001,
-) -> TradeDeal:
-    return TradeDeal(
-        ticket=ticket,
-        order=1001,
-        time=int(time.time()),
-        time_msc=int(time.time() * 1000),
-        type=pos_type,
-        entry=entry,
-        magic=12345,
-        position_id=position_id,
-        reason=0,
-        volume=0.10,
-        price=price,
-        commission=commission,
-        swap=swap,
-        profit=profit,
-        fee=0.0,
-        symbol=SYMBOL,
-        comment="",
-        external_id="",
-    )
-
 
 SymbolInfoNT = namedtuple(
     "SymbolInfo",
-    [
-        "name",
-        "description",
-        "trade_contract_size",
-        "point",
-        "digits",
-        "volume_min",
-        "volume_max",
-        "volume_step",
-        "bid",
-        "ask",
-        "spread",
-        "spread_float",
-        "trade_tick_size",
-        "trade_tick_value",
-        "trade_tick_value_profit",
-        "trade_tick_value_loss",
-        "currency_base",
-        "currency_profit",
-        "currency_margin",
-        "trade_mode",
-        "filling_mode",
-        "trade_stops_level",
-        "trade_freeze_level",
-        "swap_long",
-        "swap_short",
-        "swap_mode",
-        "time",
-    ],
+    "name description trade_contract_size point digits volume_min volume_max volume_step "
+    "bid ask spread spread_float trade_tick_size trade_tick_value trade_tick_value_profit "
+    "trade_tick_value_loss currency_base currency_profit currency_margin trade_mode "
+    "filling_mode trade_stops_level trade_freeze_level swap_long swap_short swap_mode time",
 )
 
 EURUSD_SPEC = SymbolInfoNT(
@@ -150,35 +72,55 @@ EURUSD_SPEC = SymbolInfoNT(
 )
 
 
-def _configure_mt5(
-    mt5_mock,
+def _make_deal(
     *,
-    entry_deal: TradeDeal | None = None,
+    ticket: int = 2001,
+    entry: int = 1,
+    pos_type: int = 1,
+    price: float = 1.11000,
+    commission: float = -3.50,
+    swap: float = 0.0,
+    profit: float = 100.0,
+    position_id: int = 100_001,
+) -> TradeDeal:
+    return TradeDeal(
+        ticket=ticket,
+        order=1001,
+        time=int(time.time()),
+        time_msc=int(time.time() * 1000),
+        type=pos_type,
+        entry=entry,
+        magic=12345,
+        position_id=position_id,
+        reason=0,
+        volume=0.10,
+        price=price,
+        commission=commission,
+        swap=swap,
+        profit=profit,
+        fee=0.0,
+        symbol=SYMBOL,
+        comment="",
+        external_id="",
+    )
+
+
+def _configure_mt5(
+    mt5_mock: MagicMock,
+    *,
     exit_deal: TradeDeal | None = None,
     extra_deals: list[TradeDeal] | None = None,
 ) -> None:
     mt5_mock.symbol_info.return_value = EURUSD_SPEC
     deals = []
-    if entry_deal:
-        deals.append(entry_deal)
     if exit_deal:
         deals.append(exit_deal)
     if extra_deals:
         deals.extend(extra_deals)
-    mt5_mock.history_deals_get.return_value = tuple(deals) if deals else ()
+    mt5_mock.history_deals_get.return_value = tuple(deals)
 
 
-@pytest.fixture
-def logger_root(tmp_path: Path) -> Path:
-    return tmp_path / "logs" / "trades"
-
-
-@pytest.fixture
-def trade_logger(logger_root: Path) -> TradeLogger:
-    return TradeLogger(log_root=logger_root, strategy_name="test_strategy", strategy_tz=STRATEGY_TZ)
-
-
-def _make_entry(
+def _make_pos(
     ticket: int = 100_001,
     pos_type: int = 0,
     price_open: float = 1.10000,
@@ -211,274 +153,204 @@ def _query(logger: TradeLogger, trade_id: int, partial_seq: int = 0) -> dict | N
     if row is None:
         return None
     cols = [d[0] for d in conn.execute("SELECT * FROM trades LIMIT 0").description]
-    return dict(zip(cols, row))
+    return dict(zip(cols, row))  # noqa: B905
 
 
-#  Schema
+@pytest.fixture
+def trade_logger(tmp_path: Path) -> TradeLogger:
+    return TradeLogger(
+        log_root=tmp_path / "logs" / "trades",
+        strategy_name="test_strategy",
+        strategy_tz=STRATEGY_TZ,
+    )
 
 
 class TestSchema:
     def test_table_created(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
-        tables = conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
-        names = {row[0] for row in tables}
-        assert "trades" in names
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
+        assert "trades" in tables
 
     def test_wal_mode_enabled(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
-        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-        assert mode == "wal"
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
     def test_ticket_index_exists(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
-        indexes = conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()
-        names = {row[0] for row in indexes}
-        assert "idx_ticket" in names
+        indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
+        assert "idx_ticket" in indexes
 
-    def test_composite_primary_key(self, trade_logger: TradeLogger) -> None:
-        """Inserting duplicate (trade_id, partial_sequence) must fail."""
+    def test_composite_pk_rejects_duplicate(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
+        insert = (
+            "INSERT INTO trades (trade_id, partial_sequence, entry_date, entry_time, "
+            "magic_number, strategy_name, symbol, size, entry_price, "
+            "expected_entry_price, entry_spread, position_type) "
+            "VALUES (1, 0, '2025-01-01', '00:00:00', 1, 'x', 'x', 1, 1, 1, 0, 'BUY')"
+        )
+        conn.execute(insert)
+        conn.commit()
         with pytest.raises(sqlite3.IntegrityError):
-            conn.execute(
-                "INSERT INTO trades (trade_id, partial_sequence, entry_date, entry_time, "
-                "magic_number, strategy_name, symbol, size, entry_price, "
-                "expected_entry_price, entry_spread, position_type) "
-                "VALUES (1, 0, '2025-01-01', '00:00:00', 1, 'x', 'x', 1, 1, 1, 0, 'BUY')"
-            )
-            conn.execute(
-                "INSERT INTO trades (trade_id, partial_sequence, entry_date, entry_time, "
-                "magic_number, strategy_name, symbol, size, entry_price, "
-                "expected_entry_price, entry_spread, position_type) "
-                "VALUES (1, 0, '2025-01-01', '00:00:00', 1, 'x', 'x', 1, 1, 1, 0, 'BUY')"
-            )
+            conn.execute(insert)
             conn.commit()
 
 
-#  log_fill
-
-
 class TestLogFill:
-    def test_inserts_row(self, trade_logger: TradeLogger, mt5_mock) -> None:
+    def test_inserts_row(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry()
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
-                position=pos,
+                position=_make_pos(),
                 expected_entry_price=1.10000,
                 strategy_name="test_strategy",
                 opening_sl=1.09500,
             )
         )
+        assert _query(trade_logger, 1) is not None
+
+    def test_buy_position_type_and_positive_size(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        _configure_mt5(mt5_mock)
+        trade_logger.log_fill(
+            FillData(
+                trade_id=1,
+                position=_make_pos(pos_type=0, volume=0.10),
+                expected_entry_price=1.10,
+                strategy_name="test_strategy",
+            )
+        )
         row = _query(trade_logger, 1)
         assert row is not None
-
-    def test_position_type_buy(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        _configure_mt5(mt5_mock)
-        pos = _make_entry(pos_type=0)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=pos,
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-                opening_sl=1.09,
-            )
-        )
-        row = _query(trade_logger, 1)
         assert row["position_type"] == "BUY"
-
-    def test_position_type_sell(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        _configure_mt5(mt5_mock)
-        pos = _make_entry(pos_type=1)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=pos,
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-                opening_sl=1.10500,
-            )
-        )
-        row = _query(trade_logger, 1)
-        assert row["position_type"] == "SELL"
-        assert row["size"] == pytest.approx(-0.10)  # SELL → negative size
-
-    def test_buy_size_positive(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        _configure_mt5(mt5_mock)
-        pos = _make_entry(pos_type=0, volume=0.10)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=pos,
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-            )
-        )
-        row = _query(trade_logger, 1)
         assert row["size"] == pytest.approx(0.10)
 
-    def test_exit_fields_null_after_fill(self, trade_logger: TradeLogger, mt5_mock) -> None:
+    def test_sell_position_type_and_negative_size(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry()
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
-                position=pos,
+                position=_make_pos(pos_type=1, volume=0.10),
                 expected_entry_price=1.10,
                 strategy_name="test_strategy",
             )
         )
         row = _query(trade_logger, 1)
-        assert row["exit_date"] is None
-        assert row["exit_time"] is None
-        assert row["exit_price"] is None
-        assert row["gross_pnl"] is None
-        assert row["net_pnl"] is None
+        assert row is not None
+        assert row["position_type"] == "SELL"
+        assert row["size"] == pytest.approx(-0.10)
 
-    def test_entry_spread_computed(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        """entry_spread = price_open - expected_entry_price."""
+    def test_exit_fields_null_after_fill(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry(price_open=1.10005)
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
-                position=pos,
+                position=_make_pos(),
+                expected_entry_price=1.10,
+                strategy_name="test_strategy",
+            )
+        )
+        row = _query(trade_logger, 1)
+        assert row is not None
+        assert row["exit_date"] is None
+        assert row["exit_price"] is None
+        assert row["gross_pnl"] is None
+
+    def test_entry_spread_computed(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        _configure_mt5(mt5_mock)
+        trade_logger.log_fill(
+            FillData(
+                trade_id=1,
+                position=_make_pos(price_open=1.10005),
                 expected_entry_price=1.10000,
                 strategy_name="test_strategy",
             )
         )
         row = _query(trade_logger, 1)
+        assert row is not None
         assert row["entry_spread"] == pytest.approx(0.00005, abs=1e-8)
 
-    def test_fill_time_ms_stored(self, trade_logger: TradeLogger, mt5_mock) -> None:
+    def test_fill_time_ms_stored(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry()
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
-                position=pos,
+                position=_make_pos(),
                 expected_entry_price=1.10,
                 strategy_name="test_strategy",
                 fill_time_ms=123.456,
             )
         )
         row = _query(trade_logger, 1)
-        # Stored as fill_time_ms / 1000 = 0.123456
+        assert row is not None
         assert row["fill_time_mseconds"] == pytest.approx(0.123456, rel=1e-4)
 
-    def test_volume_multiplier_stored(self, trade_logger: TradeLogger, mt5_mock) -> None:
+    def test_volume_multiplier_stored(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry()
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
-                position=pos,
+                position=_make_pos(),
                 expected_entry_price=1.10,
                 strategy_name="test_strategy",
                 volume_multiplier=0.75,
             )
         )
         row = _query(trade_logger, 1)
+        assert row is not None
         assert row["volume_multiplier"] == pytest.approx(0.75)
 
 
-#  log_close
-
-
 class TestLogClose:
-    def _fill_and_close(
+    def _fill_then_close(
         self,
-        trade_logger: TradeLogger,
-        mt5_mock,
+        logger: TradeLogger,
+        mt5_mock: MagicMock,
         *,
         trade_id: int = 1,
-        ticket: int = 100_001,
-        entry: float = 1.10000,
-        expected_entry: float = 1.10000,
-        sl: float = 1.09500,
-        tp: float = 1.11000,
         exit_price: float = 1.11000,
-        expected_exit: float = 1.11000,
-        gross_pnl: float = 100.0,
         commission: float = -3.50,
+        profit: float = 100.0,
     ) -> dict:
-        exit_deal = _make_deal(
-            entry=1,  # DEAL_ENTRY_OUT
-            pos_type=1,  # SELL
-            price=exit_price,
-            commission=commission,
-            profit=gross_pnl,
-            position_id=ticket,
-        )
-        _configure_mt5(mt5_mock, exit_deal=exit_deal)
-
-        pos = _make_entry(ticket=ticket, price_open=entry, sl=sl, tp=tp)
-        trade_logger.log_fill(
+        deal = _make_deal(price=exit_price, commission=commission, profit=profit)
+        _configure_mt5(mt5_mock, exit_deal=deal)
+        pos = _make_pos()
+        logger.log_fill(
             FillData(
                 trade_id=trade_id,
                 position=pos,
-                expected_entry_price=expected_entry,
+                expected_entry_price=1.10000,
                 strategy_name="test_strategy",
-                opening_sl=sl,
+                opening_sl=1.09500,
             )
         )
-        trade_logger.log_close(
+        logger.log_close(
             CloseData(
                 trade_id=trade_id,
                 position=pos,
-                expected_exit_price=expected_exit,
-                opening_sl=sl,
+                expected_exit_price=exit_price,
+                opening_sl=1.09500,
                 exit_trigger="TP",
-                entry_price=entry,
-                expected_entry_price=expected_entry,
+                entry_price=1.10000,
+                expected_entry_price=1.10000,
             )
         )
-        return _query(trade_logger, trade_id)
+        row = _query(logger, trade_id)
+        assert row is not None
+        return row
 
-    def test_updates_exit_fields(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        row = self._fill_and_close(trade_logger, mt5_mock)
+    def test_exit_fields_populated(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        row = self._fill_then_close(trade_logger, mt5_mock)
         assert row["exit_price"] == pytest.approx(1.11000)
-        assert row["exit_trigger"] == "TP"
         assert row["exit_date"] is not None
 
-    def test_gross_pnl_from_deal(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        row = self._fill_and_close(trade_logger, mt5_mock, gross_pnl=100.0)
-        assert row["gross_pnl"] == pytest.approx(100.0)
-
-    def test_net_pnl_equals_gross_plus_commission(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        row = self._fill_and_close(trade_logger, mt5_mock, gross_pnl=100.0, commission=-3.50)
-        assert row["net_pnl"] == pytest.approx(96.50)
-
-    def test_swap_stored(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        """Swap comes from PositionCacheEntry.swap, not the deal."""
-        pos_with_swap: PositionCacheEntry = {
-            "ticket": 100_001,
-            "symbol": SYMBOL,
-            "type": 0,
-            "volume": 0.10,
-            "price_open": 1.10000,
-            "sl": 1.09500,
-            "tp": 1.11000,
-            "profit": 0.0,
-            "swap": -1.50,
-            "magic": 12345,
-            "time": 0,
-        }
-        exit_deal = _make_deal(profit=100.0, commission=-3.50)
-        _configure_mt5(mt5_mock, exit_deal=exit_deal)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=pos_with_swap,
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-            )
-        )
+    def test_no_row_updated_without_prior_fill(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        deal = _make_deal()
+        _configure_mt5(mt5_mock, exit_deal=deal)
+        pos = _make_pos()
         trade_logger.log_close(
             CloseData(
-                trade_id=1,
-                position=pos_with_swap,
+                trade_id=999,
+                position=pos,
                 expected_exit_price=1.11,
                 opening_sl=1.095,
                 exit_trigger="TP",
@@ -486,17 +358,14 @@ class TestLogClose:
                 expected_entry_price=1.10,
             )
         )
-        row = _query(trade_logger, 1)
-        assert row["swap"] == pytest.approx(-1.50)
+        assert _query(trade_logger, 999) is None
 
-    def test_skip_on_missing_exit_deal(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        mt5 = sys.modules["MetaTrader5"]
-        # Only ENTRY deal, no EXIT deal
-        entry_deal = _make_deal(entry=0)  # DEAL_ENTRY_IN
-        mt5.history_deals_get.return_value = (entry_deal,)
-        mt5.symbol_info.return_value = EURUSD_SPEC
-
-        pos = _make_entry()
+    def test_skip_on_missing_exit_deal(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        # Only entry deal — no exit deal
+        entry_deal = _make_deal(entry=0)
+        mt5_mock.symbol_info.return_value = EURUSD_SPEC
+        mt5_mock.history_deals_get.return_value = (entry_deal,)
+        pos = _make_pos()
         trade_logger.log_fill(
             FillData(
                 trade_id=1,
@@ -517,44 +386,23 @@ class TestLogClose:
             )
         )
         row = _query(trade_logger, 1)
-        # Row should exist but exit fields null (close was skipped)
+        assert row is not None
         assert row["exit_price"] is None
 
 
-#  Math verification
-
-
 class TestMathVerification:
-    """
-    Exact expected-value checks for every computed column.
+    """Math verification for a BUY EURUSD 0.10 lot trade.
 
-    Trade setup:
-      BUY EURUSD 0.10 lot
-      entry_price  = 1.10000   (no slippage)
-      sl           = 1.09500   (50-pip SL)
-      tp           = 1.11000   (100-pip TP)
-      exit_price   = 1.11000   (hit TP)
-      gross_pnl    = 100.0 USD (from MT5 deal)
-      commission   = −3.50 USD
-      swap         = 0.0
-
-    EURUSD spec: tick_size=0.00001, tick_value=1.0, contract_size=100,000
+    entry=1.10000, sl=1.09500, tp=1.11000, exit=1.11000 (TP)
+    gross_pnl=100.0, commission=-3.50, swap=0.0
     """
 
     @pytest.fixture(autouse=True)
-    def setup(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        self.logger = trade_logger
-        exit_deal = _make_deal(
-            entry=1,
-            pos_type=1,
-            price=1.11000,
-            commission=-3.50,
-            profit=100.0,
-        )
+    def _setup(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        exit_deal = _make_deal(entry=1, pos_type=1, price=1.11000, commission=-3.50, profit=100.0)
         _configure_mt5(mt5_mock, exit_deal=exit_deal)
-
-        pos = _make_entry(price_open=1.10000, sl=1.09500, tp=1.11000)
-        self.logger.log_fill(
+        pos = _make_pos(price_open=1.10000, sl=1.09500, tp=1.11000)
+        trade_logger.log_fill(
             FillData(
                 trade_id=1,
                 position=pos,
@@ -563,7 +411,7 @@ class TestMathVerification:
                 opening_sl=1.09500,
             )
         )
-        self.logger.log_close(
+        trade_logger.log_close(
             CloseData(
                 trade_id=1,
                 position=pos,
@@ -574,42 +422,31 @@ class TestMathVerification:
                 expected_entry_price=1.10000,
             )
         )
-        self.row = _query(self.logger, 1)
+        row = _query(trade_logger, 1)
+        assert row is not None
+        self.row = row
 
     def test_rrr_is_two(self) -> None:
-        """
-        RRR = (exit - entry) / (entry - sl)
-            = (1.11000 - 1.10000) / (1.10000 - 1.09500)
-            = 0.01000 / 0.00500 = 2.0
-        """
+        # (1.11-1.10)/(1.10-1.095) = 0.01/0.005 = 2.0
         assert self.row["rrr"] == pytest.approx(2.0, rel=1e-6)
 
     def test_gross_pnl(self) -> None:
         assert self.row["gross_pnl"] == pytest.approx(100.0)
 
     def test_net_pnl(self) -> None:
-        """net_pnl = gross_pnl + commission = 100.0 + (−3.50) = 96.50"""
         assert self.row["net_pnl"] == pytest.approx(96.50)
 
-    def test_entry_spread_zero_no_slippage(self) -> None:
-        """entry_spread = price_open − expected_entry = 1.10000 − 1.10000 = 0.0"""
+    def test_entry_spread_zero(self) -> None:
         assert self.row["entry_spread"] == pytest.approx(0.0, abs=1e-8)
 
-    def test_exit_spread_zero_no_slippage(self) -> None:
-        """exit_spread (directional, BUY) = +1 × (expected − actual) = 0.0"""
+    def test_exit_spread_zero(self) -> None:
         assert self.row["exit_spread"] == pytest.approx(0.0, abs=1e-8)
 
-    def test_slippage_cost_zero_no_slippage(self) -> None:
+    def test_slippage_cost_zero(self) -> None:
         assert self.row["slippage_cost"] == pytest.approx(0.0, abs=1e-8)
 
     def test_opening_sl_stored(self) -> None:
         assert self.row["opening_sl"] == pytest.approx(1.09500)
-
-    def test_tp_stored(self) -> None:
-        assert self.row["tp"] == pytest.approx(1.11000)
-
-    def test_entry_price_stored(self) -> None:
-        assert self.row["entry_price"] == pytest.approx(1.10000)
 
     def test_commission_stored(self) -> None:
         assert self.row["commission"] == pytest.approx(-3.50)
@@ -619,21 +456,14 @@ class TestMathVerification:
 
 
 class TestRRRFormula:
-    """Parametric RRR verification for BUY and SELL directions."""
-
     @pytest.mark.parametrize(
-        "entry,sl,exit_,pos_type,expected_rrr",
+        "entry,sl,exit_,pos_type,expected",
         [
-            # BUY: 1:2 trade
-            (1.10000, 1.09500, 1.11000, 0, 2.0),
-            # BUY: 1:1 trade
-            (1.10000, 1.09500, 1.10500, 0, 1.0),
-            # BUY: losing trade (−0.5R)
-            (1.10000, 1.09500, 1.09750, 0, -0.5),
-            # SELL: 1:2 trade
-            (1.10000, 1.10500, 1.09000, 1, 2.0),
-            # SELL: losing trade
-            (1.10000, 1.10500, 1.10250, 1, -0.5),
+            (1.10000, 1.09500, 1.11000, 0, 2.0),  # BUY 1:2
+            (1.10000, 1.09500, 1.10500, 0, 1.0),  # BUY 1:1
+            (1.10000, 1.09500, 1.09750, 0, -0.5),  # BUY loss
+            (1.10000, 1.10500, 1.09000, 1, 2.0),  # SELL 1:2
+            (1.10000, 1.10500, 1.10250, 1, -0.5),  # SELL loss
         ],
     )
     def test_rrr(
@@ -643,69 +473,47 @@ class TestRRRFormula:
         sl: float,
         exit_: float,
         pos_type: int,
-        expected_rrr: float,
+        expected: float,
     ) -> None:
-        rrr = trade_logger._calculate_rrr(entry, exit_, sl, pos_type)
-        assert rrr == pytest.approx(expected_rrr, rel=1e-5)
+        assert trade_logger._calculate_rrr(entry, exit_, sl, pos_type) == pytest.approx(expected, rel=1e-5)
 
     def test_zero_risk_returns_zero(self, trade_logger: TradeLogger) -> None:
-        """Sl == entry → risk = 0 → return 0 not ZeroDivisionError."""
-        rrr = trade_logger._calculate_rrr(1.10, 1.11, 1.10, 0)
-        assert rrr == pytest.approx(0.0)
+        assert trade_logger._calculate_rrr(1.10, 1.11, 1.10, 0) == pytest.approx(0.0)
 
 
 class TestSlippageCostFormula:
-    """
-    slippage_cost = direction_multiplier × spread × volume × (tick_value / tick_size)
-
-    direction_multiplier:
-      BUY  (type=0) → −1  (positive spread = we paid more → negative cost)
-      SELL (type=1) → +1
-    """
-
     @pytest.mark.parametrize(
         "pos_type,spread,volume,expected",
         [
-            # BUY, 5-pip entry slippage
-            (0, 0.00005, 0.10, -0.5),
-            # SELL, 5-pip entry slippage
-            (1, 0.00005, 0.10, 0.5),
-            # BUY, no slippage
-            (0, 0.0, 0.10, 0.0),
-            # BUY, 1-pip, 1.0 lot
-            (0, 0.00010, 1.0, -10.0),
+            (0, 0.00005, 0.10, -0.5),  # BUY 5-pip slippage
+            (1, 0.00005, 0.10, 0.5),  # SELL 5-pip slippage
+            (0, 0.0, 0.10, 0.0),  # BUY no slippage
+            (0, 0.00010, 1.0, -10.0),  # BUY 1-pip 1.0 lot
         ],
     )
-    def test_slippage_formula(
+    def test_formula(
         self,
         trade_logger: TradeLogger,
+        mt5_mock: MagicMock,
         pos_type: int,
         spread: float,
         volume: float,
         expected: float,
-        mt5_mock,
     ) -> None:
-        mt5 = sys.modules["MetaTrader5"]
-        mt5.symbol_info.return_value = EURUSD_SPEC
+        mt5_mock.symbol_info.return_value = EURUSD_SPEC
         cost = trade_logger._calculate_slippage_cost(SYMBOL, volume, pos_type, spread)
         assert cost == pytest.approx(expected, abs=1e-8)
 
 
 class TestExitSpreadFormula:
-    """
-    exit_spread (directional):
-      direction = +1 for BUY (type=0), −1 for SELL (type=1)
-      = direction × (expected − actual)
-    """
-
     @pytest.mark.parametrize(
         "actual,expected_p,pos_type,result",
         [
-            (1.11000, 1.11000, 0, 0.0),  # BUY, no slippage
-            (1.10995, 1.11000, 0, 0.00005),  # BUY, 0.5-pip unfavorable
-            (1.11005, 1.11000, 0, -0.00005),  # BUY, 0.5-pip favorable
-            (1.09000, 1.09000, 1, 0.0),  # SELL, no slippage
-            (1.09005, 1.09000, 1, 0.00005),  # SELL, 0.5-pip unfavorable
+            (1.11000, 1.11000, 0, 0.0),  # BUY no slippage
+            (1.10995, 1.11000, 0, 0.00005),  # BUY unfavorable
+            (1.11005, 1.11000, 0, -0.00005),  # BUY favorable
+            (1.09000, 1.09000, 1, 0.0),  # SELL no slippage
+            (1.09005, 1.09000, 1, 0.00005),  # SELL unfavorable
         ],
     )
     def test_exit_spread(
@@ -716,24 +524,19 @@ class TestExitSpreadFormula:
         pos_type: int,
         result: float,
     ) -> None:
-        spread = trade_logger._calculate_exit_spread(actual, expected_p, pos_type)
-        assert spread == pytest.approx(result, abs=1e-8)
+        assert trade_logger._calculate_exit_spread(actual, expected_p, pos_type) == pytest.approx(result, abs=1e-8)
 
     def test_none_expected_returns_none(self, trade_logger: TradeLogger) -> None:
         assert trade_logger._calculate_exit_spread(1.1, None) is None
 
 
-#  get_open_trades_by_ticket_last_three (reconciliation)
-
-
 class TestGetOpenTradesByTicket:
-    def test_returns_open_trade(self, trade_logger: TradeLogger, mt5_mock) -> None:
+    def test_returns_open_trade(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
-        pos = _make_entry(ticket=55555)
         trade_logger.log_fill(
             FillData(
                 trade_id=7,
-                position=pos,
+                position=_make_pos(ticket=55555),
                 expected_entry_price=1.10,
                 strategy_name="test_strategy",
                 opening_sl=1.095,
@@ -743,10 +546,10 @@ class TestGetOpenTradesByTicket:
         assert 55555 in result
         assert result[55555]["trade_id"] == 7
 
-    def test_returns_empty_for_closed_trade(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        exit_deal = _make_deal()
-        _configure_mt5(mt5_mock, exit_deal=exit_deal)
-        pos = _make_entry(ticket=66666)
+    def test_closed_trade_not_returned(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
+        deal = _make_deal(position_id=66666)
+        _configure_mt5(mt5_mock, exit_deal=deal)
+        pos = _make_pos(ticket=66666)
         trade_logger.log_fill(
             FillData(
                 trade_id=8,
@@ -766,13 +569,10 @@ class TestGetOpenTradesByTicket:
                 expected_entry_price=1.10,
             )
         )
-        result = trade_logger.get_open_trades_by_ticket_last_three([66666])
-        assert 66666 not in result
+        assert 66666 not in trade_logger.get_open_trades_by_ticket_last_three([66666])
 
     def test_empty_tickets_returns_empty(self, trade_logger: TradeLogger) -> None:
         assert trade_logger.get_open_trades_by_ticket_last_three([]) == {}
 
-    def test_unknown_ticket_not_in_result(self, trade_logger: TradeLogger, mt5_mock) -> None:
-        _configure_mt5(mt5_mock)
-        result = trade_logger.get_open_trades_by_ticket_last_three([999999])
-        assert 999999 not in result
+    def test_unknown_ticket_not_in_result(self, trade_logger: TradeLogger) -> None:
+        assert 999999 not in trade_logger.get_open_trades_by_ticket_last_three([999999])

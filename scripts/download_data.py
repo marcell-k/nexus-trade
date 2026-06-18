@@ -4,14 +4,17 @@ import calendar
 import logging
 from datetime import datetime
 from pathlib import Path
+from typing import TYPE_CHECKING
 from zoneinfo import ZoneInfo
 
 import MetaTrader5 as mt
-import numpy as np
 import pandas as pd
 
 from nexus_trade.config.account import AccountConfig, load_account_config_from_env, load_env_file
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES
+
+if TYPE_CHECKING:
+    import numpy as np
 
 logging.basicConfig(
     level=logging.INFO,
@@ -87,7 +90,7 @@ def download_range_data(
     target_tz = ZoneInfo(timezone)
     logger.info(f"Downloading {broker_symbol} {timeframe} {start_dt.date()} → {end_dt.date()} ...")
 
-    rates: np.ndarray | None = mt.copy_rates_range(broker_symbol, timeframe_enum, start_dt, end_dt)
+    rates: np.ndarray | None = mt.copy_rates_range(broker_symbol, timeframe_enum, start_dt, end_dt)  # type: ignore[reportAttributeAccessIssue]
     if rates is None or rates.size == 0:
         logger.warning(f"NO DATA for {broker_symbol}")
         return None
@@ -101,7 +104,7 @@ def download_range_data(
     df = df.rename(columns={"time": "Date"}).set_index("Date")
 
     # Drop incomplete current bar.
-    current_time = datetime.now(target_tz)
+    current_time = pd.Timestamp.now(tz=target_tz)
     df = df[df.index + pd.Timedelta(minutes=bar_minutes) <= current_time]
 
     df = df[["open", "high", "low", "close", "tick_volume", "spread"]].rename(columns={"tick_volume": "volume"})

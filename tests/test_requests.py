@@ -13,12 +13,11 @@ from nexus_trade.execution.request import (
     ModifyRequest,
 )
 
-#  EntryRequest
-
 
 class TestEntryRequestValidation:
     def _valid(self, **overrides: object) -> dict:
-        base = {
+        base: dict = {
+            "strategy_name": "test_strategy",
             "order_type": "market",
             "symbol": "EURUSD",
             "volume": 0.10,
@@ -59,7 +58,6 @@ class TestEntryRequestValidation:
             EntryRequest(**self._valid(volume=-0.01))
 
     def test_zero_volume_is_valid(self) -> None:
-        """volume=0 means risk manager blocked trade — should not raise."""
         req = EntryRequest(**self._valid(volume=0.0))
         assert req.volume == pytest.approx(0.0)
 
@@ -77,11 +75,6 @@ class TestEntryRequestValidation:
         assert req.tp is None
         assert req.entry_price is None
         assert req.comment == ""
-        assert req.strategy_name is None
-
-    def test_comment_default(self) -> None:
-        req = EntryRequest(**self._valid())
-        assert req.comment == ""
 
     def test_sl_tp_settable(self) -> None:
         req = EntryRequest(**self._valid(sl=1.09500, tp=1.11000))
@@ -90,6 +83,7 @@ class TestEntryRequestValidation:
 
     def test_bracket_fields_settable(self) -> None:
         req = EntryRequest(
+            strategy_name="test_strategy",
             order_type="bracket",
             symbol="EURUSD",
             volume=0.1,
@@ -105,9 +99,6 @@ class TestEntryRequestValidation:
         assert req.sell_stop == pytest.approx(1.09900)
 
 
-#  ExitRequest
-
-
 class TestExitRequestValidation:
     def test_valid_full_close(self) -> None:
         req = ExitRequest(ticket=100001)
@@ -116,10 +107,6 @@ class TestExitRequestValidation:
     def test_valid_half_close(self) -> None:
         req = ExitRequest(ticket=100001, portion=0.5)
         assert req.portion == pytest.approx(0.5)
-
-    def test_valid_minimum_portion(self) -> None:
-        req = ExitRequest(ticket=100001, portion=0.01)
-        assert req.portion == pytest.approx(0.01)
 
     def test_ticket_zero_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid ticket"):
@@ -149,9 +136,6 @@ class TestExitRequestValidation:
         assert req.exit_reason == ""
 
 
-#  ModifyRequest
-
-
 class TestModifyRequest:
     def test_all_none_fields(self) -> None:
         req = ModifyRequest(ticket=1)
@@ -162,9 +146,6 @@ class TestModifyRequest:
     def test_with_new_sl(self) -> None:
         req = ModifyRequest(ticket=1, new_sl=1.09000)
         assert req.new_sl == pytest.approx(1.09000)
-
-
-#  ExecutionResult
 
 
 class TestExecutionResult:

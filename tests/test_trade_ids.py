@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import threading
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
+    from pathlib import Path
 
 
 @pytest.fixture
@@ -16,7 +20,7 @@ def db_path(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def manager(db_path: Path) -> TradeIDSequenceManager:
+def manager(db_path: Path) -> Generator[TradeIDSequenceManager]:
     mgr = TradeIDSequenceManager(db_path)
     yield mgr
     mgr.close()

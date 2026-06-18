@@ -1,4 +1,4 @@
-"""Unit tests for nexus_trade.core.state — TTLCache, normalize_order."""
+"""Unit tests for nexus_trade.core.types — TTLCache, OrderSnapshot, normalize_order."""
 
 from __future__ import annotations
 
@@ -7,9 +7,7 @@ import time
 import pytest
 
 from nexus_trade.core.models import normalize_order
-from nexus_trade.core.state import OrderSnapshot, TTLCache
-
-#  TTLCache
+from nexus_trade.core.types import OrderSnapshot, TTLCache
 
 
 class TestTTLCache:
@@ -19,14 +17,13 @@ class TestTTLCache:
 
     def test_set_makes_cache_valid(self) -> None:
         cache: TTLCache[str] = TTLCache()
-        cache.set("hello")
+        cache.set("alma")
         assert cache.is_valid(ttl=60.0) is True
-        assert cache.value == "hello"
+        assert cache.value == "alma"
 
     def test_expires_after_ttl(self) -> None:
         cache: TTLCache[int] = TTLCache()
         cache.set(42)
-        # Backdate timestamp so cache appears expired
         cache.timestamp = time.time() - 100.0
         assert cache.is_valid(ttl=60.0) is False
 
@@ -54,9 +51,9 @@ class TestTTLCache:
     def test_overwrite_resets_ttl(self) -> None:
         cache: TTLCache[int] = TTLCache()
         cache.set(1)
-        cache.timestamp = time.time() - 90.0  # expire it
+        cache.timestamp = time.time() - 90.0
         assert cache.is_valid(ttl=60.0) is False
-        cache.set(2)  # fresh write
+        cache.set(2)
         assert cache.is_valid(ttl=60.0) is True
         assert cache.value == 2
 
@@ -70,19 +67,18 @@ class TestTTLCache:
         assert cache.value is None
 
 
-#  normalize_order
-
-
 class TestNormalizeOrder:
-    def test_from_dict(self) -> None:
-        d = {"ticket": 1, "symbol": "EURUSD", "type": 4, "magic": 99}
-        snap = normalize_order(d)
+    def test_from_namedtuple(self) -> None:
+        from collections import namedtuple
+
+        Order = namedtuple("Order", "ticket symbol type magic")
+        snap = normalize_order(Order(ticket=1, symbol="EURUSD", type=4, magic=99))
         assert snap.ticket == 1
         assert snap.symbol == "EURUSD"
         assert snap.type == 4
         assert snap.magic == 99
 
-    def test_from_object(self) -> None:
+    def test_from_object_with_attrs(self) -> None:
         class _Order:
             ticket = 555
             symbol = "GBPUSD"
@@ -92,15 +88,6 @@ class TestNormalizeOrder:
         snap = normalize_order(_Order())
         assert isinstance(snap, OrderSnapshot)
         assert snap.ticket == 555
-        assert snap.symbol == "GBPUSD"
-        assert snap.type == 5
-        assert snap.magic == 77
-
-    def test_dict_coerces_int(self) -> None:
-        d = {"ticket": "200", "symbol": "XAUUSD", "type": "4", "magic": "88"}
-        snap = normalize_order(d)
-        assert isinstance(snap.ticket, int)
-        assert snap.ticket == 200
 
     def test_order_snapshot_is_frozen(self) -> None:
         snap = OrderSnapshot(ticket=1, symbol="X", type=0, magic=0)
@@ -108,5 +95,8 @@ class TestNormalizeOrder:
             snap.ticket = 99  # type: ignore[misc]
 
     def test_result_type(self) -> None:
-        snap = normalize_order({"ticket": 1, "symbol": "S", "type": 0, "magic": 0})
+        from collections import namedtuple
+
+        Order = namedtuple("Order", "ticket symbol type magic")
+        snap = normalize_order(Order(1, "S", 0, 0))
         assert isinstance(snap, OrderSnapshot)

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import textwrap
-from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 from pydantic import ValidationError
@@ -23,6 +23,8 @@ from nexus_trade.config.strategy import (
     StrategyConfig,
 )
 
+if TYPE_CHECKING:
+    from pathlib import Path
 #  RiskProfile
 
 
@@ -206,7 +208,7 @@ class TestBaseStrategyParams:
 
     def test_extra_fields_forbidden(self) -> None:
         with pytest.raises(ValidationError):
-            BaseStrategyParams(symbol="X", unknown_param=True)
+            BaseStrategyParams(symbol="X", unknown_param=True)  # type: ignore[reportCallIssue]
 
 
 class TestStrategyConfigBuild:
