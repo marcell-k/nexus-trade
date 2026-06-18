@@ -31,7 +31,7 @@ def _build_select_query(columns: Sequence[str] | None) -> str:
     if not columns:
         raise ValueError("columns must contain at least one column name")
     projected = ", ".join(f'"{column}"' for column in columns)
-    return f"SELECT {projected} FROM trades"  # # noqa: S608
+    return f"SELECT {projected} FROM trades"  # noqa: S608
 
 
 def _trade_table_exists(connection: sqlite3.Connection) -> bool:

@@ -669,13 +669,18 @@ class StrategyRunner:
 
     def _handle_new_fill(self, pos: Position) -> None:
         ticket = pos.ticket
-        trade_id = self.ticket_to_trade_id.get(ticket)
+        with self.position_state_lock:
+            trade_id = self.ticket_to_trade_id.get(ticket)
+            needs_resolution = (
+                trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
+            )
         if trade_id is None:
             trade_id = self._resolve_pending_ticket(pos)
-        elif self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None:
-            resolved = self._resolve_pending_ticket(pos)
+        elif needs_resolution:
+            resolved: int | None = self._resolve_pending_ticket(pos)
             if resolved is not None:
                 trade_id = resolved
+
         if trade_id is None:
             trade_id = self._handle_orphaned_fill(ticket, pos)
             if trade_id is None:
@@ -1087,7 +1092,7 @@ class StrategyRunner:
         return PartialCloseData(
             trade_id=trade_id,
             position=NormalizedPosition.from_mt5(position).to_partial_snapshot(),
-            closed_volume=data.executed_volume if data.executed_volume is not None else 0.0,
+            closed_volume=data.closed_volume if data.closed_volume is not None else 0.0,
             remaining_volume=remaining_volume,
             expected_exit_price=data.expected_exit_price,
             opening_sl=data.opening_sl,
@@ -1137,9 +1142,8 @@ class StrategyRunner:
         )
         return updated_position
 
-    def _log_full_close_execution(self, pos: Position, data: ExitLogData) -> None:
+    def _log_full_close_execution(self, trade_id: int | None, pos: Position, data: ExitLogData) -> None:
         ticket = pos.ticket
-        trade_id, _, _, _ = self._resolve_entry_prices(ticket, pos)
 
         if trade_id is not None:
             close_data = self._build_close_data(
@@ -1215,7 +1219,7 @@ class StrategyRunner:
             f"{self.strategy_name:<9}: ExitPrice t={ticket} | src={price_source} | px={expected_exit_price:.5f}"
         )
 
-        _, expected_entry_price, opening_sl, entry_price = self._resolve_entry_prices(ticket, pos)
+        trade_id, expected_entry_price, opening_sl, entry_price = self._resolve_entry_prices(ticket, pos)
         result = self.executor.execute_exit(exit_request)
         if not result.success:
             logger.error(f"{self.strategy_name:<9}: ExitFail t={ticket} | err={result.error_message}")
@@ -1235,7 +1239,7 @@ class StrategyRunner:
             exit_log_data.closed_volume = pos.volume * exit_request.portion
             self._log_partial_close_execution(exit_log_data)
         else:
-            self._log_full_close_execution(pos, exit_log_data)
+            self._log_full_close_execution(trade_id, pos, exit_log_data)
 
     def _monitor_exits(self, data: pd.DataFrame, preloaded_positions: list[PositionCacheEntry] | None = None) -> None:
         positions = (

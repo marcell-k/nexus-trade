@@ -246,7 +246,7 @@ class TradeLogger:
         slippage_cost = self._calculate_slippage_cost(
             data.position["symbol"], data.position["volume"], data.position["type"], entry_spread
         )
-        fill_time_mseconds = data.fill_time_ms / 1000.0 if data.fill_time_ms is not None else None
+        fill_time_mseconds = data.fill_time_ms if data.fill_time_ms is not None else None
 
         with self._transact(f"fill:{data.trade_id}") as conn:
             _ = conn.execute(

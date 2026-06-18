@@ -218,7 +218,6 @@ class ExitLogData:
     expected_entry_price: float
     opening_sl: float
     entry_price: float
-    executed_volume: float | None = None
     closed_volume: float | None = None
     deal_id: int | None = None
 
