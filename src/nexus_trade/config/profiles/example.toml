@@ -32,18 +32,20 @@ risk_multiplier = 0.25
 # One block per module under src/nexus_trade/strategies/.
 # risk_pct: percentage of account balance risked per trade (1.0 = 1 %).
 
-[strategies.example_strategy]
+[strategies.sma_crossover]
 enabled  = true
-risk_pct = 1.0
+position_sizing_method = "fractional"
+risk_value             = 1.0      # 1% of account balance per trade
 
-[strategies.example_strategy.meta_labeling]
+[strategies.sma_crossover.meta_labeling]
 enabled         = false
 use_calibration = false
 min_confidence  = 0.0
 
 # [strategies.another_strategy]
 # enabled  = false
-# risk_pct = 0.5
+# position_sizing_method = "fixed"
+# risk_value             = 500    # $500 risked per trade regardless of balance
 #
 # [strategies.another_strategy.meta_labeling]
 # enabled = false

@@ -11,7 +11,7 @@ import MetaTrader5 as mt
 
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
-from nexus_trade.core.types import GlobalRiskPolicy, NewsEvent, TTLCache
+from nexus_trade.core.types import DrawdownThreshold, GlobalRiskPolicy, NewsEvent, TTLCache
 from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
 
@@ -84,6 +84,12 @@ class RiskManager:
         self.cost_calculator: MarketCostCalculator = MarketCostCalculator(
             max_spread_points=self.risk_config.max_spread_points,
             max_slippage_points=self.risk_config.max_slippage_points,
+        )
+
+        self._sorted_drawdown_thresholds: list[DrawdownThreshold] = sorted(
+            global_policy["adaptive_sizing"]["drawdown_thresholds"],
+            key=lambda x: x["drawdown_pct"],
+            reverse=True,
         )
 
         self._account_cache: TTLCache[AccountInfo] = TTLCache()
@@ -283,12 +289,7 @@ class RiskManager:
         return cache
 
     def calculate_position_size(self, symbol: str, entry: float, sl: float, strategy_name: str) -> float:
-        """Calculate position size: volume = (R x multiplier) / (d_SL x v_tick)."""
-        account_info = self._get_account_info_cached()
-        if account_info is None:
-            logger.error(f"PosSizeFail strat={strategy_name} | reason=account_info_unavailable")
-            return 0.0
-
+        """Calculate position size: volume = R / (d_SL / tick_size x tick_value)."""
         symbol_info = SYMBOL_SPEC_CACHE.get_spec(symbol)
         if symbol_info is None:
             logger.error(f"PosSizeFail sym={symbol} | reason=symbol_info_unavailable")
@@ -307,13 +308,25 @@ class RiskManager:
             )
             return 0.0
 
-        risk_per_trade = self.global_policy["strategy_risk"][strategy_name]
-        risk_multiplier = self._get_adaptive_risk_multiplier(strategy_name)
-        adjusted_risk: float = account_info.balance * risk_per_trade * risk_multiplier
-
         ticks = sl_distance / symbol_info.tick_size
-        volume = adjusted_risk / (ticks * tick_value)
+        strategy_risk = self.global_policy["strategy_risk"][strategy_name]
 
+        if strategy_risk["method"] == "fixed":
+            volume = strategy_risk["risk_value"] / (ticks * tick_value)
+            logger.debug(
+                f"PosSizeFixed strat={strategy_name} | risk=${strategy_risk['risk_value']:.2f} | "
+                f"sl_dist={sl_distance:.5f} | vol={volume:.4f}"
+            )
+            return self._normalize_volume(volume, symbol_info)
+
+        account_info = self._get_account_info_cached()
+        if account_info is None:
+            logger.error(f"PosSizeFail strat={strategy_name} | reason=account_info_unavailable")
+            return 0.0
+
+        risk_multiplier = self._get_adaptive_risk_multiplier(strategy_name)
+        adjusted_risk: float = account_info.balance * (strategy_risk["risk_value"] / 100.0) * risk_multiplier
+        volume = adjusted_risk / (ticks * tick_value)
         return self._normalize_volume(volume, symbol_info)
 
     def _normalize_volume(self, volume: float, symbol_info: SymbolSpec) -> float:
@@ -322,19 +335,10 @@ class RiskManager:
         return max(symbol_info.volume_min, min(volume, symbol_info.volume_max))
 
     def _get_adaptive_risk_multiplier(self, strategy_name: str) -> float:
-        adaptive_config = self.global_policy["adaptive_sizing"]
-        if not adaptive_config["enabled"]:
+        if not self.global_policy["adaptive_sizing"]["enabled"]:
             return 1.0
-
-        current_drawdown = self.shared_state["max_drawdown"]
-
-        thresholds = sorted(
-            adaptive_config.get("drawdown_thresholds", []),
-            key=lambda x: x["drawdown_pct"],
-            reverse=True,
-        )
-
-        for threshold in thresholds:
+        current_drawdown: float = float(self.shared_state["max_drawdown"])
+        for threshold in self._sorted_drawdown_thresholds:
             if current_drawdown >= threshold["drawdown_pct"]:
                 multiplier = threshold["risk_multiplier"]
                 logger.info(

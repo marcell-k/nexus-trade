@@ -20,6 +20,7 @@ from nexus_trade.config.profile import MetaLabelingCfg, RiskProfile
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.repository import PositionRepository
+from nexus_trade.core.types import StrategyRiskConfig
 from nexus_trade.execution.executor import OrderExecutor
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.filters.news import preprocess_calendar_file
@@ -35,11 +36,7 @@ if TYPE_CHECKING:
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.protocols import AtomicInt, ProcessLock
     from nexus_trade.core.state import SharedState
-    from nexus_trade.core.types import (
-        GlobalRiskPolicy,
-        OrderSnapshot,
-        PositionCacheEntry,
-    )
+    from nexus_trade.core.types import GlobalRiskPolicy, OrderSnapshot, PositionCacheEntry
 
 
 logger = logging.getLogger(__name__)
@@ -107,7 +104,17 @@ class Orchestrator:
                     for t in profile.adaptive_sizing.thresholds
                 ],
             },
-            "strategy_risk": {name: cfg.risk_fraction for name, cfg in profile.strategies.items() if cfg.enabled},
+            "strategy_risk": cast(
+                "dict[str, StrategyRiskConfig]",
+                {
+                    name: StrategyRiskConfig(
+                        method=cfg.position_sizing_method,
+                        risk_value=cfg.risk_value,
+                    )
+                    for name, cfg in profile.strategies.items()
+                    if cfg.enabled
+                },
+            ),
             "log_root": str(self.log_root),
         }
 
@@ -382,9 +389,13 @@ class Orchestrator:
             level=logging.DEBUG,
         )
         for name, config in self.strategy_configs.items():
-            risk_pct = self._profile.strategies[name].risk_pct
             params = config.params
-            logger.debug(f"StratCfg name={name} | sym={params.symbol} | tf={params.timeframe} | risk={risk_pct:.2f}%")
+            risk_value = self._profile.strategies[name].risk_value
+            method = self._profile.strategies[name].position_sizing_method
+            logger.debug(
+                f"StratCfg name={name} | sym={params.symbol} | tf={params.timeframe} | "
+                f"sizing={method} | risk={risk_value}"
+            )
 
     def _connect_to_mt5(self) -> None:
         self.mt5_connection = MT5Connection(self.account_config)

@@ -24,7 +24,6 @@ class SMAParams(BaseStrategyParams):
     atr_period: int = 14
     atr_multiplier: float = 1.5
     risk_reward_ratio: float = 2.0
-    volume_fixed_lots: float = 0.1
 
 
 def get_config() -> StrategyConfig[SMAParams]:
@@ -52,7 +51,6 @@ def get_config() -> StrategyConfig[SMAParams]:
             sessions=[SessionConfig(start="08:00", end="22:00")],
         ),
         risk=RiskConfig(
-            position_sizing_method="fractional",
             max_positions=1,
             max_trades=5,
             max_spread_points=10,

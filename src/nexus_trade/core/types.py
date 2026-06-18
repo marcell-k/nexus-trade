@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, TypedDict
+from typing import TYPE_CHECKING, Literal, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -126,7 +126,7 @@ class AdaptiveSizingConfig(TypedDict):
 class GlobalRiskPolicy(TypedDict):
     max_total_positions: int
     max_daily_drawdown_pct: float
-    strategy_risk: dict[str, float]
+    strategy_risk: dict[str, StrategyRiskConfig]
     log_root: str
     max_drawdown_pct: float
     max_daily_trades: int
@@ -135,7 +135,8 @@ class GlobalRiskPolicy(TypedDict):
 
 
 class StrategyRiskConfig(TypedDict):
-    risk_per_trade: float
+    method: Literal["fractional", "fixed"]
+    risk_value: float
 
 
 class _EntryMetadataRequired(TypedDict):

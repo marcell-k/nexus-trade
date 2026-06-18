@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tomllib
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -33,13 +33,20 @@ class MetaLabelingCfg(FrozenModel):
 
 class StrategyCfg(FrozenModel):
     enabled: bool
-    risk_pct: float = Field(gt=0.0, description="Risk per trade as % of balance (1.0 = 1 %)")
+    position_sizing_method: Literal["fractional", "fixed"] = "fractional"
+    risk_value: float = Field(
+        gt=0.0,
+        description=(
+            "For 'fractional': % of balance risked per trade (1.0 = 1 %). "
+            "For 'fixed': fixed dollar amount risked per trade (e.g. 500 = $500)."
+        ),
+    )
     meta_labeling: MetaLabelingCfg = Field(default_factory=MetaLabelingCfg)
 
     @property
     def risk_fraction(self) -> float:
-        """Fractional risk used by RiskManager (risk_pct / 100)."""
-        return self.risk_pct / 100.0
+        """Only meaningful for fractional sizing."""
+        return self.risk_value / 100.0
 
 
 class LimitsCfg(FrozenModel):
