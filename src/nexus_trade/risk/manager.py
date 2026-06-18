@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 
     from MetaTrader5 import AccountInfo, SymbolInfo
 
-    from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, StrategyConfig
+    from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, SessionConfig, StrategyConfig
     from nexus_trade.core.data_handler import DataHandler
     from nexus_trade.core.protocols import AtomicInt, StrategyRunnerProtocol
     from nexus_trade.core.state import SharedState
@@ -140,6 +140,9 @@ class RiskManager:
         result = self.check_strategy_limits(strategy_name, skip_position_limit_check)
         if not result.can_trade:
             return result
+        result = self._check_trading_hours(strategy_name)
+        if not result.can_trade:
+            return result
         result = self._check_news_filter(strategy_name)
         if not result.can_trade:
             return result
@@ -215,12 +218,17 @@ class RiskManager:
             return ValidationResult(False, "Global position limit reached")
         if self.global_trade_count.value >= self.global_policy["max_daily_trades"]:
             return ValidationResult(False, "Daily trade limit reached")
-        # Batch: one proxy access per field still, but at least no redundant reads
-        state = self.shared_state
-        daily_dd = float(state["daily_drawdown"])
+        if not hasattr(self, "_drawdown_cache"):
+            self._drawdown_cache = TTLCache[tuple[float, float]]()
+
+        if not self._drawdown_cache.is_valid(self.DEFAULT_DRAWDOWN_REFRESH_SECONDS):
+            state = self.shared_state
+            self._drawdown_cache.set((float(state["daily_drawdown"]), float(state["max_drawdown"])))
+
+        assert self._drawdown_cache.value is not None
+        daily_dd, max_dd = self._drawdown_cache.value
         if daily_dd > self.global_policy["max_daily_drawdown_pct"]:
             return ValidationResult(False, f"Daily drawdown {daily_dd * 100:.1f}%")
-        max_dd = float(state["max_drawdown"])
         if max_dd > self.global_policy["max_drawdown_pct"]:
             return ValidationResult(False, f"Max drawdown {max_dd * 100:.1f}%")
         return ValidationResult(True, "Global checks passed")
@@ -354,3 +362,30 @@ class RiskManager:
             logger.error(f"PosNormFail sym={symbol} | reason=symbol_info_unavailable")
             return None
         return self._normalize_volume(volume, symbol_info) if volume >= symbol_info.volume_min else None
+
+    def _check_trading_hours(self, strategy_name: str) -> ValidationResult:
+        th = self.strategy_config.trading_hours
+        if th is None or not th.enabled or not th.sessions:
+            return ValidationResult(True, "TradingHours disabled")
+
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo(th.timezone)
+        now: dt_time = datetime.now(tz).time().replace(second=0, microsecond=0)
+
+        for session in th.sessions:
+            if self._time_in_session(now, session):
+                return ValidationResult(True, "TradingHours passed")
+
+        logger.debug(f"TradingHoursBlock strat={strategy_name} | now={now.strftime('%H:%M')} | tz={th.timezone}")
+        return ValidationResult(False, "outside_trading_hours")
+
+    @staticmethod
+    def _time_in_session(now: dt_time, session: SessionConfig) -> bool:
+        start_h, start_m = map(int, session.start.split(":"))
+        end_h, end_m = map(int, session.end.split(":"))
+        start = dt_time(start_h, start_m)
+        end = dt_time(end_h, end_m)
+        if end >= start:
+            return start <= now <= end
+        return now >= start or now <= end

@@ -555,6 +555,8 @@ class StrategyRunner:
             "ticket": None,
             "opening_sl": None,
             "position_snapshot": None,
+            "entry_request": entry_request,
+            "expected_entry_price": 0.0,
         }
         with self.position_state_lock:
             self.ticket_to_trade_id.update({buy_ticket: trade_id, sell_ticket: trade_id})
@@ -590,6 +592,7 @@ class StrategyRunner:
                 "expected_entry_price": expected_entry_price,
                 "opening_sl": opening_sl,
                 "position_snapshot": None,
+                "entry_request": None,
             }
             self.ticket_to_trade_id[ticket] = trade_id
             self._register_pending_trade(
@@ -938,7 +941,10 @@ class StrategyRunner:
             signal=entry_request.signal,
         )
         if not validation.can_trade:
-            logger.warning(f"{self.strategy_name:<9}: TradeReject reason={validation.reason}")
+            if validation.reason == "outside_trading_hours":
+                logger.debug(f"{self.strategy_name:<9}: TradeSkip reason=outside_trading_hours")
+            else:
+                logger.warning(f"{self.strategy_name:<9}: TradeReject reason={validation.reason}")
             return
 
         position_reserved = True
