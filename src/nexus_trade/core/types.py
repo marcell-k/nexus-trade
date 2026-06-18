@@ -139,21 +139,14 @@ class StrategyRiskConfig(TypedDict):
     risk_value: float
 
 
-class _EntryMetadataRequired(TypedDict):
+class EntryMetadata(TypedDict):
+    entry_request: EntryRequest | None
+    expected_entry_price: float
     submission_time: float
     volume_multiplier: float | None
     ticket: int | None
     opening_sl: float | None
     position_snapshot: PositionCacheEntry | None
-
-
-class EntryMetadata(_EntryMetadataRequired, total=False):
-    expected_entry_price: float
-    entry_request: EntryRequest | None
-    expected_buy_entry: float | None
-    expected_sell_entry: float | None
-    buy_sl: float | None
-    sell_sl: float | None
 
 
 class ReconciledTrade(TypedDict):
