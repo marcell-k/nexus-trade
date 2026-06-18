@@ -79,6 +79,7 @@ class Orchestrator:
         self.trade_id_manager: TradeIDSequenceManager = TradeIDSequenceManager(self.trade_id_db_path)
 
         self.mt5_connection: MT5Connection | None = None
+        self.executor: OrderExecutor | None = None
         self._shutdown_initiated: bool = False
         self._drift_first_seen: float | None = None
         self._position_drift_value: int | None = None
@@ -401,6 +402,7 @@ class Orchestrator:
         self.mt5_connection = MT5Connection(self.account_config)
         if not self.mt5_connection.connect():
             raise RuntimeError("Orchestrator startup failed: Unable to connect to MT5.")
+        self.executor = OrderExecutor(self.account_config.broker_tz)
         logger.debug("OrchMT5 conn=ok")
 
     def _sync_positions(self) -> None:
@@ -606,7 +608,7 @@ class Orchestrator:
             logger.debug("ForceCloseSkip reason=no_managed_items")
             return
 
-        executor = OrderExecutor(self.account_config.broker_tz)
+        executor = self.executor or OrderExecutor(self.account_config.broker_tz)
 
         if managed_positions:
             tickets = [int(p["ticket"]) for p in managed_positions]
