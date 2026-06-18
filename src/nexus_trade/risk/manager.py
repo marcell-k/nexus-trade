@@ -27,7 +27,6 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
-DRAWDOWN_QUERY_START = datetime(2025, 1, 1)
 
 
 @dataclass

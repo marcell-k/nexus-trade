@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
@@ -13,6 +14,7 @@ class SystemTimings:
     drawdown_refresh_interval_seconds: int
     max_strategy_offset_slots: int
     strategy_offset_divisor: float
+    drawdown_history_start: datetime
 
 
 SYSTEM_TIMINGS = SystemTimings(
@@ -22,4 +24,5 @@ SYSTEM_TIMINGS = SystemTimings(
     drawdown_refresh_interval_seconds=30,
     max_strategy_offset_slots=6,
     strategy_offset_divisor=40.0,
+    drawdown_history_start=datetime(2025, 1, 1),
 )

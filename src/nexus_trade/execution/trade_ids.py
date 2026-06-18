@@ -206,7 +206,7 @@ class TradeIDSequenceManager:
             self._reconnect()
             try:
                 # Retry the query once after reconnecting
-                row = conn.execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
+                row = self._get_conn().execute("SELECT last_trade_id FROM trade_id_seq WHERE id = 1").fetchone()
             except sqlite3.Error as retry_e:
                 logger.error(f"TradeIDReadFail after reconnect err={retry_e}")
                 raise retry_e from e

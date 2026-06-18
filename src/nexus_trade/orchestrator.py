@@ -23,7 +23,6 @@ from nexus_trade.core.repository import PositionRepository
 from nexus_trade.execution.executor import OrderExecutor
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.filters.news import preprocess_calendar_file
-from nexus_trade.risk.manager import DRAWDOWN_QUERY_START
 from nexus_trade.runner import RunnerConfig, run_strategy_process
 from nexus_trade.utils.format import format_price_display, log_section_header
 
@@ -431,7 +430,7 @@ class Orchestrator:
         last_refresh_ts: float = float(self.shared_state.get("drawdown_last_refresh", 0.0))
         is_full_rescan = last_refresh_ts == 0.0
         query_start = (
-            DRAWDOWN_QUERY_START
+            SYSTEM_TIMINGS.drawdown_history_start
             if is_full_rescan
             else datetime.fromtimestamp(last_refresh_ts, tz=self.account_config.broker_tz)
         )
