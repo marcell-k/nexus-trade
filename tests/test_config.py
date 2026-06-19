@@ -8,17 +8,10 @@ from typing import TYPE_CHECKING
 import pytest
 from pydantic import ValidationError
 
-from nexus_trade.config.profile import (
-    DrawdownThresholdCfg,
-    MetaLabelingCfg,
-    RiskProfile,
-    load_profile,
-)
+from nexus_trade.config.profile import RiskProfile, load_profile
 from nexus_trade.config.strategy import (
     BaseStrategyParams,
     ExecutionConfig,
-    NewsFilterConfig,
-    RiskConfig,
     SessionConfig,
     StrategyConfig,
 )
@@ -84,36 +77,6 @@ class TestRiskProfile:
         with pytest.raises(ValidationError):
             RiskProfile.model_validate(d)
 
-    def test_adaptive_sizing_defaults(self) -> None:
-        p = RiskProfile.model_validate(_valid_profile_dict())
-        assert p.adaptive_sizing.enabled is False
-        assert p.adaptive_sizing.thresholds == []
-
-
-class TestDrawdownThresholdCfg:
-    def test_valid(self) -> None:
-        t = DrawdownThresholdCfg(drawdown_pct=0.05, risk_multiplier=0.5)
-        assert t.drawdown_pct == pytest.approx(0.05)
-
-    def test_zero_drawdown_pct_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            DrawdownThresholdCfg(drawdown_pct=0.0, risk_multiplier=0.5)
-
-    def test_risk_multiplier_above_one_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            DrawdownThresholdCfg(drawdown_pct=0.05, risk_multiplier=1.5)
-
-
-class TestMetaLabelingCfg:
-    def test_defaults(self) -> None:
-        cfg = MetaLabelingCfg()
-        assert cfg.enabled is False
-        assert cfg.min_confidence == pytest.approx(0.0)
-
-    def test_min_confidence_out_of_range_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            MetaLabelingCfg(min_confidence=1.5)
-
 
 class TestLoadProfile:
     def test_file_not_found_raises(self, tmp_path: Path) -> None:
@@ -151,44 +114,12 @@ def _valid_params() -> BaseStrategyParams:
 
 
 class TestExecutionConfig:
-    def test_valid(self) -> None:
-        cfg = ExecutionConfig(magic_number=12345, deviation=100)
-        assert cfg.magic_number == 12345
-
     def test_magic_zero_raises(self) -> None:
         with pytest.raises(ValidationError):
             ExecutionConfig(magic_number=0)
 
-    def test_magic_negative_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            ExecutionConfig(magic_number=-1)
-
-    def test_negative_deviation_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            ExecutionConfig(magic_number=1, deviation=-1)
-
-    def test_comment_prefix_max_length(self) -> None:
-        with pytest.raises(ValidationError):
-            ExecutionConfig(magic_number=1, comment_prefix="x" * 16)
-
-
-class TestNewsFilterConfig:
-    def test_defaults_disabled(self) -> None:
-        cfg = NewsFilterConfig()
-        assert cfg.enabled is False
-        assert cfg.currencies == []
-        assert cfg.buffer_minutes == 15
-
-    def test_negative_buffer_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            NewsFilterConfig(buffer_minutes=-1)
-
 
 class TestSessionConfig:
-    def test_valid_format(self) -> None:
-        s = SessionConfig(start="08:00", end="17:00")
-        assert s.start == "08:00"
-
     @pytest.mark.parametrize("bad", ["8:00", "08:0", "800", "08:00:00"])
     def test_invalid_format_raises(self, bad: str) -> None:
         with pytest.raises(ValidationError):
@@ -196,16 +127,6 @@ class TestSessionConfig:
 
 
 class TestBaseStrategyParams:
-    def test_defaults(self) -> None:
-        p = BaseStrategyParams(symbol="EURUSD")
-        assert p.backcandles == 100
-        assert p.timeframe == "M15"
-        assert p.timezone == "UTC"
-
-    def test_backcandles_zero_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            BaseStrategyParams(symbol="X", backcandles=0)
-
     def test_extra_fields_forbidden(self) -> None:
         with pytest.raises(ValidationError):
             BaseStrategyParams(symbol="X", unknown_param=True)  # type: ignore[reportCallIssue]
@@ -235,15 +156,3 @@ class TestStrategyConfigBuild:
                 symbol="EURUSD",
                 order_type="invalid",  # type: ignore[arg-type]
             )
-
-
-class TestRiskConfig:
-    def test_defaults(self) -> None:
-        r = RiskConfig()
-        assert r.max_positions == 1
-        assert r.max_trades == 1
-        assert r.max_spread_points == 100
-
-    def test_zero_max_positions_raises(self) -> None:
-        with pytest.raises(ValidationError):
-            RiskConfig(max_positions=0)

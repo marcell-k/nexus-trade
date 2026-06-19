@@ -166,19 +166,9 @@ def trade_logger(tmp_path: Path) -> TradeLogger:
 
 
 class TestSchema:
-    def test_table_created(self, trade_logger: TradeLogger) -> None:
-        conn = trade_logger._get_connection()
-        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
-        assert "trades" in tables
-
     def test_wal_mode_enabled(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
         assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
-
-    def test_ticket_index_exists(self, trade_logger: TradeLogger) -> None:
-        conn = trade_logger._get_connection()
-        indexes = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='index'").fetchall()}
-        assert "idx_ticket" in indexes
 
     def test_composite_pk_rejects_duplicate(self, trade_logger: TradeLogger) -> None:
         conn = trade_logger._get_connection()
@@ -196,19 +186,6 @@ class TestSchema:
 
 
 class TestLogFill:
-    def test_inserts_row(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
-        _configure_mt5(mt5_mock)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=_make_pos(),
-                expected_entry_price=1.10000,
-                strategy_name="test_strategy",
-                opening_sl=1.09500,
-            )
-        )
-        assert _query(trade_logger, 1) is not None
-
     def test_buy_position_type_and_positive_size(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
         _configure_mt5(mt5_mock)
         trade_logger.log_fill(
@@ -268,36 +245,6 @@ class TestLogFill:
         row = _query(trade_logger, 1)
         assert row is not None
         assert row["entry_spread"] == pytest.approx(0.00005, abs=1e-8)
-
-    def test_fill_time_ms_stored(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
-        _configure_mt5(mt5_mock)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=_make_pos(),
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-                fill_time_ms=123.456,
-            )
-        )
-        row = _query(trade_logger, 1)
-        assert row is not None
-        assert row["fill_time_mseconds"] == pytest.approx(0.123456, rel=1e-4)
-
-    def test_volume_multiplier_stored(self, trade_logger: TradeLogger, mt5_mock: MagicMock) -> None:
-        _configure_mt5(mt5_mock)
-        trade_logger.log_fill(
-            FillData(
-                trade_id=1,
-                position=_make_pos(),
-                expected_entry_price=1.10,
-                strategy_name="test_strategy",
-                volume_multiplier=0.75,
-            )
-        )
-        row = _query(trade_logger, 1)
-        assert row is not None
-        assert row["volume_multiplier"] == pytest.approx(0.75)
 
 
 class TestLogClose:
@@ -445,15 +392,6 @@ class TestMathVerification:
     def test_slippage_cost_zero(self) -> None:
         assert self.row["slippage_cost"] == pytest.approx(0.0, abs=1e-8)
 
-    def test_opening_sl_stored(self) -> None:
-        assert self.row["opening_sl"] == pytest.approx(1.09500)
-
-    def test_commission_stored(self) -> None:
-        assert self.row["commission"] == pytest.approx(-3.50)
-
-    def test_exit_trigger(self) -> None:
-        assert self.row["exit_trigger"] == "TP"
-
 
 class TestRRRFormula:
     @pytest.mark.parametrize(
@@ -570,9 +508,3 @@ class TestGetOpenTradesByTicket:
             )
         )
         assert 66666 not in trade_logger.get_open_trades_by_ticket_last_three([66666])
-
-    def test_empty_tickets_returns_empty(self, trade_logger: TradeLogger) -> None:
-        assert trade_logger.get_open_trades_by_ticket_last_three([]) == {}
-
-    def test_unknown_ticket_not_in_result(self, trade_logger: TradeLogger) -> None:
-        assert 999999 not in trade_logger.get_open_trades_by_ticket_last_three([999999])

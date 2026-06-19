@@ -112,13 +112,13 @@ class RiskManager:
     def _create_news_filter(self) -> NewsFilter | None:
         news_config = self.strategy_config.filters.news
         if not news_config.enabled:
-            logger.info(f"NewsCfg strat={self.strategy_name} | enabled=0")
+            logger.info(f"NewsCfg strat={self.strategy_name} | enabled=False")
             return None
 
         nf = NewsFilter(
             data_handler=self.data_handler,
             strategy_name=self.strategy_name,
-            shared_state=self.shared_state,  # type: ignore[arg-type]
+            shared_state=self.shared_state,
         )
         logger.debug(
             f"NewsInit strat={self.strategy_name} | cur={nf.filter_currencies or 'ALL'} | buf_min={nf.buffer_minutes}"

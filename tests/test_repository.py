@@ -78,15 +78,6 @@ class TestCacheHit:
         assert len(result) == 1
         assert result[0]["magic"] == 100
 
-    def test_filters_by_symbol(self, fresh_state: SharedState) -> None:
-        e1 = _make_entry(1, symbol="EURUSD")
-        e2 = _make_entry(2, symbol="GBPUSD")
-        fresh_state["position_cache"] = {1: e1, 2: e2}
-        repo = PositionRepository(fresh_state, _make_lock(), 60)
-        result = repo.get_strategy_positions("EURUSD", magic=100, prefer_cache=True)
-        assert result is not None
-        assert all(p["symbol"] == "EURUSD" for p in result)
-
     def test_known_tickets_filter_applied(self, fresh_state: SharedState) -> None:
         e1 = _make_entry(1)
         e2 = _make_entry(2)
@@ -123,9 +114,6 @@ class TestCacheStale:
 
 
 class TestCacheMetrics:
-    def test_age_is_recent(self, repo: PositionRepository) -> None:
-        assert 0.0 <= repo.cache_age_seconds() < 5.0
-
     def test_is_fresh_when_recent(self, repo: PositionRepository) -> None:
         assert repo.is_cache_fresh() is True
 

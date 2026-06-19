@@ -72,7 +72,8 @@ Orchestrator runs in the main process: refreshes the shared position cache from 
 - **Adaptive position sizing** — configurable drawdown thresholds scale risk fraction down as the portfolio bleeds
 
 ### Per-Strategy Risk
-- Fractional position sizing: `volume = (balance × risk_pct × multiplier) / (sl_distance / tick_size × tick_value)`
+- **Fractional sizing**: `volume = (balance × risk_pct × multiplier) / (sl_distance / tick_size × tick_value)`
+- **Fixed sizing**: `volume = risk_dollar / (sl_distance / tick_size × tick_value)` — risk a fixed dollar amount regardless of balance
 - Per-strategy max positions and daily trade limits
 - Spread and slippage point guards before any order is sent
 - News filter: blocks entry within a configurable buffer around high-impact economic events (parses MT5 CSV calendar export)
@@ -119,7 +120,7 @@ cd nexus-trade
 uv sync
 
 # 3. Copy and fill the risk profile template
-cp config/profiles/example.toml config/profiles/live.toml
+cp src/nexus_trade/config/profiles/example.toml src/nexus_trade/config/profiles/live.toml
 # edit live.toml
 
 # 4. Create a .env file
@@ -129,7 +130,7 @@ MT5_SERVER=YourBroker-Live
 MT5_PATH=C:\Program Files\MetaTrader 5\terminal64.exe
 MT5_CALENDAR_PATH=path_to_calendar.txt
 BROKER_TIMEZONE="Europe/Athens"
-RISK_PROFILE=src\nexus_trade\config\profiles/live.toml
+RISK_PROFILE=src\nexus_trade\config\profiles\live.toml
 
 # 5. Run
 uv run nexus-trade --env .env
@@ -158,26 +159,92 @@ src/nexus_trade/strategies/
     └── strategy.py    # signal generation logic
 ```
 
-See `src/nexus_trade/strategies/sma_crossover/` for a complete working example — read both files alongside the `[strategies.sma_crossover]` block in `config/profiles/example.toml` before writing your own.
+See `src/nexus_trade/strategies/sma_crossover/` for a complete working example — read both files alongside the `[strategies.sma_crossover]` block in `src/nexus_trade/config/profiles/example.toml` before writing your own.
 
 Once both files are in place, enable the strategy in your risk profile and restart:
 
 ```toml
-# config/profiles/live.toml
+# src/nexus_trade/config/profiles/live.toml
+
 [strategies.my_strategy]
-enabled  = true
-risk_pct = 1.0    # 1% of account balance per trade
+enabled                = true
+position_sizing_method = "fractional"   # "fractional" | "fixed"
+risk_value             = 1.0            # fractional: 1 % of balance per trade
+                                        # fixed:      dollar amount per trade (e.g. 500)
+
+[strategies.my_strategy.meta_labeling]
+enabled         = false   # set true to gate entries on an XGBoost classifier
+use_calibration = false
+min_confidence  = 0.0
 ```
 
 NexusTrade spawns a process for `my_strategy` alongside every other enabled strategy. All portfolio limits apply immediately.
 
 ---
 
-## Configuration Reference
+## Risk Profile Reference
 
-Fully annotated examples for every option live in `config/profiles/example.toml` — read that file directly. The table below is a quick field reference for `StrategyConfig`.
+The full annotated template is `src/nexus_trade/config/profiles/example.toml` — read that file directly. The sections below summarise every block.
 
-### `StrategyConfig` fields
+### `[account]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `type` | `str` | Label used in log-directory names and orchestrator logs |
+| `initial_balance` | `int` | Reference balance for position sizing and drawdown calculations |
+
+### `[limits]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `max_total_positions` | `int` | Portfolio-wide open position cap (enforced atomically across all strategy processes) |
+| `max_daily_trades` | `int` | Portfolio-wide trade quota; resets at midnight broker time |
+| `max_daily_drawdown_pct` | `float` | Halt all strategies when intraday drawdown exceeds this fraction (e.g. `0.05` = 5 %) |
+| `max_drawdown_pct` | `float` | Halt all strategies when peak-to-trough drawdown exceeds this fraction (e.g. `0.10` = 10 %) |
+
+### `[adaptive_sizing]`
+
+Scales position size down as drawdown grows. Thresholds are evaluated highest-first; the first matching threshold applies.
+
+```toml
+[adaptive_sizing]
+enabled = true
+scope   = "portfolio"   # "portfolio" | "strategy" (reserved — portfolio only today)
+
+[[adaptive_sizing.thresholds]]
+drawdown_pct    = 0.05   # trigger at 5 % drawdown
+risk_multiplier = 0.50   # halve position size
+
+[[adaptive_sizing.thresholds]]
+drawdown_pct    = 0.10   # trigger at 10 % drawdown
+risk_multiplier = 0.25   # quarter position size
+```
+
+When `enabled = false` all multipliers default to `1.0`.
+
+### `[strategies.<name>]`
+
+One block per module under `src/nexus_trade/strategies/`. The block name must match the directory name exactly.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `bool` | Spawn a process for this strategy on startup |
+| `position_sizing_method` | `"fractional"` \| `"fixed"` | How `risk_value` is interpreted |
+| `risk_value` | `float` | **fractional**: % of account balance per trade (`1.0` = 1 %) · **fixed**: dollar amount per trade (e.g. `500`) |
+
+### `[strategies.<name>.meta_labeling]`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | `bool` | Load and apply the XGBoost classifier at `strategies/<name>/models/prod_v1.json` |
+| `use_calibration` | `bool` | Apply probability calibration from `strategies/<name>/calibration_models/` |
+| `min_confidence` | `float` | Reject signals below this predicted probability (`0.0` disables the threshold) |
+
+---
+
+## `StrategyConfig` fields
+
+Configured in `src/nexus_trade/strategies/<name>/config.py`, not in the TOML profile.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -202,26 +269,22 @@ Fully annotated examples for every option live in `config/profiles/example.toml`
 ```
 nexus-trade/
 ├── src/nexus_trade/
-│   ├── config/          # Pydantic models: account, strategy, risk profile, timings
-│   ├── core/            # MT5 connection, position cache, DataHandler, type definitions
-│   ├── execution/       # OrderExecutor, request dataclasses, TradeIDSequenceManager
-│   ├── filters/         # NewsFilter, MarketCostCalculator, meta-labeling loader
-│   ├── logging/         # TradeLogger (SQLite, WAL) + AsyncTradeLogger (queue wrapper)
-│   ├── risk/            # RiskManager — layered validation pipeline
-│   ├── utils/           # Formatting, system sleep inhibitor, DB utilities
-│   ├── orchestrator.py  # Multi-process coordinator, shared state, heartbeat + cache loop
-│   └── runner.py        # Per-strategy event loop, position lifecycle, exit monitor
-├── typings/MetaTrader5/ # Hand-written stub — complete type coverage for the MT5 C API
-├── tests/unit/
-└── config/profiles/
-    └── example.toml     # Annotated risk profile — start here
+│   ├── config/                  # Pydantic models: account, strategy, risk profile, timings
+│   │   └── profiles/
+│   │       └── example.toml     # Annotated risk profile — start here
+│   ├── core/                    # MT5 connection, position cache, DataHandler, type definitions
+│   ├── execution/               # OrderExecutor, request dataclasses, TradeIDSequenceManager
+│   ├── filters/                 # NewsFilter, MarketCostCalculator, meta-labeling loader
+│   ├── logging/                 # TradeLogger (SQLite, WAL) + AsyncTradeLogger (queue wrapper)
+│   ├── risk/                    # RiskManager — layered validation pipeline
+│   ├── utils/                   # Formatting, system sleep inhibitor, DB utilities
+│   ├── orchestrator.py          # Multi-process coordinator, shared state, heartbeat + cache loop
+│   └── runner.py                # Per-strategy event loop, position lifecycle, exit monitor
+├── typings/MetaTrader5/         # Hand-written stub — complete type coverage for the MT5 C API
+└── tests/unit/
 ```
 
 ---
-
-## License
-
-MIT
 
 ## Disclaimer
 

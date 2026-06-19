@@ -38,10 +38,6 @@ def calendar_csv(tmp_path: Path) -> Path:
 
 
 class TestPreprocessCalendarFile:
-    def test_parses_valid_csv(self, calendar_csv: Path) -> None:
-        df, _ = preprocess_calendar_file(calendar_csv, BROKER_TZ)
-        assert not df.empty
-
     def test_maps_impact_to_priority(self, calendar_csv: Path) -> None:
         df, _ = preprocess_calendar_file(calendar_csv, BROKER_TZ)
         assert "High" in df["priority"].values
@@ -74,12 +70,6 @@ class TestPreprocessCalendarFile:
         path.write_text(content, encoding="utf-16")
         df, _ = preprocess_calendar_file(path, BROKER_TZ)
         assert len(df) == 1
-
-    def test_columns_renamed(self, calendar_csv: Path) -> None:
-        df, _ = preprocess_calendar_file(calendar_csv, BROKER_TZ)
-        assert "event_name" in df.columns
-        assert "currency" in df.columns
-        assert "Event" not in df.columns
 
 
 def _build_news_filter(

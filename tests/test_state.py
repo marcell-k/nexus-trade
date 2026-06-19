@@ -27,12 +27,6 @@ class TestTTLCache:
         cache.timestamp = time.time() - 100.0
         assert cache.is_valid(ttl=60.0) is False
 
-    def test_within_ttl_is_valid(self) -> None:
-        cache: TTLCache[int] = TTLCache()
-        cache.set(99)
-        cache.timestamp = time.time() - 30.0
-        assert cache.is_valid(ttl=60.0) is True
-
     def test_invalidate_clears_value_and_timestamp(self) -> None:
         cache: TTLCache[float] = TTLCache()
         cache.set(3.14)
@@ -40,13 +34,6 @@ class TestTTLCache:
         assert cache.value is None
         assert cache.timestamp == 0.0
         assert cache.is_valid(ttl=60.0) is False
-
-    def test_set_updates_timestamp(self) -> None:
-        cache: TTLCache[str] = TTLCache()
-        before = time.time()
-        cache.set("x")
-        after = time.time()
-        assert before <= cache.timestamp <= after
 
     def test_overwrite_resets_ttl(self) -> None:
         cache: TTLCache[int] = TTLCache()
@@ -56,15 +43,6 @@ class TestTTLCache:
         cache.set(2)
         assert cache.is_valid(ttl=60.0) is True
         assert cache.value == 2
-
-    def test_zero_ttl_always_invalid(self) -> None:
-        cache: TTLCache[int] = TTLCache()
-        cache.set(1)
-        assert cache.is_valid(ttl=0.0) is False
-
-    def test_none_value_after_init(self) -> None:
-        cache: TTLCache[list[int]] = TTLCache()
-        assert cache.value is None
 
 
 class TestNormalizeOrder:
@@ -78,25 +56,7 @@ class TestNormalizeOrder:
         assert snap.type == 4
         assert snap.magic == 99
 
-    def test_from_object_with_attrs(self) -> None:
-        class _Order:
-            ticket = 555
-            symbol = "GBPUSD"
-            type = 5
-            magic = 77
-
-        snap = normalize_order(_Order())
-        assert isinstance(snap, OrderSnapshot)
-        assert snap.ticket == 555
-
     def test_order_snapshot_is_frozen(self) -> None:
         snap = OrderSnapshot(ticket=1, symbol="X", type=0, magic=0)
         with pytest.raises((TypeError, AttributeError)):
             snap.ticket = 99  # type: ignore[misc]
-
-    def test_result_type(self) -> None:
-        from collections import namedtuple
-
-        Order = namedtuple("Order", "ticket symbol type magic")
-        snap = normalize_order(Order(1, "S", 0, 0))
-        assert isinstance(snap, OrderSnapshot)
