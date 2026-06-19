@@ -18,7 +18,7 @@ from nexus_trade.filters.news import NewsFilter
 if TYPE_CHECKING:
     from zoneinfo import ZoneInfo
 
-    from MetaTrader5 import AccountInfo, SymbolInfo
+    from MetaTrader5 import AccountInfo
 
     from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, SessionConfig, StrategyConfig
     from nexus_trade.core.data_handler import DataHandler
@@ -94,7 +94,6 @@ class RiskManager:
 
         self._account_cache: TTLCache[AccountInfo] = TTLCache()
         self._drawdown_cache: TTLCache[tuple[float, float]] = TTLCache()
-        self._symbol_cache: dict[str, TTLCache[SymbolInfo]] = {}
 
         logger.debug(
             f"RiskInit strat={self.strategy_name} | spr_max={self.cost_calculator.max_spread_points:.1f} | "
@@ -291,13 +290,6 @@ class RiskManager:
         if result is not None:
             self._account_cache.set(result)
         return result
-
-    def _get_symbol_cache(self, symbol: str) -> TTLCache[SymbolInfo]:
-        cache = self._symbol_cache.get(symbol)
-        if cache is None:
-            cache = TTLCache()
-            self._symbol_cache[symbol] = cache
-        return cache
 
     def calculate_position_size(self, symbol: str, entry: float, sl: float, strategy_name: str) -> float:
         """Calculate position size: volume = R / (d_SL / tick_size x tick_value)."""

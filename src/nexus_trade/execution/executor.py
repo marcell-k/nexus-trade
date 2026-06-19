@@ -21,7 +21,7 @@ from nexus_trade.core.constants import (
 )
 from nexus_trade.core.models import NormalizedPosition, Tick, normalize_order
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
-from nexus_trade.core.symbol import SymbolSpec, SymbolSpecCache
+from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.execution.request import (
     EntryRequest,
     ExecutionResult,
@@ -80,13 +80,9 @@ _PENDING_ORDER_TYPE_MAP: dict[tuple[str, int], OrderType] = {
 class OrderExecutor:
     """Order execution with retry logic, caching."""
 
-    _SPEC_CACHE_TTL_SECONDS: int = 300
-
     def __init__(self, broker_tz: ZoneInfo) -> None:
         self.broker_tz: ZoneInfo = broker_tz
         self.server_tz: str | None = broker_tz.key
-
-        self._symbol_spec_cache: SymbolSpecCache = SymbolSpecCache(ttl_seconds=300)
 
         self.max_retries: int = 3
         self.retry_delays: tuple[float, ...] = (0.025, 0.05, 0.10)
@@ -876,7 +872,7 @@ class OrderExecutor:
         return True, ""
 
     def _get_cached_symbol_spec(self, symbol: str) -> tuple[SymbolSpec, OrderFilling]:
-        result = self._symbol_spec_cache.get_or_fetch(symbol)
+        result = SYMBOL_SPEC_CACHE.get_or_fetch(symbol)
         if result is None:
             raise RuntimeError(f"SymbolSpec unavailable for {symbol!r}")
         return result

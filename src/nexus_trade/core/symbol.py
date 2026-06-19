@@ -114,28 +114,12 @@ class SymbolSpecCache:
                 return entry.spec, entry.filling
         return None
 
-    def get_spec(self, symbol: str, asset_class: str = "unknown") -> SymbolSpec | None:
-        """Return spec only, using the same TTL-backed cache as get_or_fetch."""
-        with self._lock:
-            entry = self._cache.get(symbol)
-            if entry is not None and entry.is_valid(self.ttl):
-                return entry.spec
-        spec = SymbolSpec.from_mt5(symbol, asset_class)
-        if spec is None:
-            return None
-        filling_modes = spec.filling_modes()
-        if not filling_modes:
-            return None
-        with self._lock:
-            self._cache[symbol] = _CachedEntry(spec, filling_modes[0], time.time())
-        return spec
-
-    def get_or_fetch(self, symbol: str) -> tuple[SymbolSpec, OrderFilling] | None:
+    def get_or_fetch(self, symbol: str, asset_class: str = "unknown") -> tuple[SymbolSpec, OrderFilling] | None:
         """Return cached (spec, filling) or fetch from MT5."""
         cached = self.get(symbol)
         if cached is not None:
             return cached
-        spec = SymbolSpec.from_mt5(symbol)
+        spec = SymbolSpec.from_mt5(symbol, asset_class)
         if spec is None:
             return None
         filling_modes = spec.filling_modes()
@@ -145,6 +129,11 @@ class SymbolSpecCache:
         with self._lock:
             self._cache[symbol] = _CachedEntry(spec, filling, time.time())
         return spec, filling
+
+    def get_spec(self, symbol: str, asset_class: str = "unknown") -> SymbolSpec | None:
+        """Return spec only — thin wrapper over get_or_fetch."""
+        result = self.get_or_fetch(symbol, asset_class)
+        return result[0] if result is not None else None
 
     def invalidate(self, symbol: str) -> None:
         """Evict a single symbol — forces re-fetch on next access."""
