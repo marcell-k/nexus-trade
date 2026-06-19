@@ -140,6 +140,8 @@ class PositionRepository:
         """Return cache entries for *symbol* + *magic* if the cache is fresh."""
         try:
             with self._position_cache_lock:
+                if "position_cache" not in self._shared_state:
+                    return []
                 cache_ts: float = float(self._shared_state.get("position_cache_timestamp", 0.0) or 0.0)
                 age = time.time() - cache_ts
 

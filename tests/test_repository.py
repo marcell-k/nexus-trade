@@ -95,7 +95,7 @@ class TestCacheHit:
 
 
 class TestCacheStale:
-    def test_stale_cache_falls_through_to_mt5(self, fresh_state: SharedState, _mt5_mock: MagicMock) -> None:
+    def test_stale_cache_falls_through_to_mt5(self, fresh_state: SharedState, mt5_mock: MagicMock) -> None:
         import sys
 
         sys.modules["MetaTrader5"].positions_get.return_value = ()
@@ -105,7 +105,7 @@ class TestCacheStale:
         assert result == []
         sys.modules["MetaTrader5"].positions_get.assert_called()
 
-    def test_fresh_cache_skips_mt5(self, fresh_state: SharedState, _mt5_mock: MagicMock) -> None:
+    def test_fresh_cache_skips_mt5(self, fresh_state: SharedState, mt5_mock: MagicMock) -> None:
         import sys
 
         repo = PositionRepository(fresh_state, _make_lock(), 60)
@@ -124,7 +124,7 @@ class TestCacheMetrics:
 
 
 class TestGetManagedPositions:
-    def test_filters_by_magic_numbers(self, _mt5_mock: MagicMock) -> None:
+    def test_filters_by_magic_numbers(self, mt5_mock: MagicMock) -> None:
         import sys
 
         RawPos = namedtuple(
@@ -142,7 +142,7 @@ class TestGetManagedPositions:
         assert len(result) == 1
         assert result[0]["magic"] == 100
 
-    def test_returns_none_on_api_failure(self, _mt5_mock: MagicMock) -> None:
+    def test_returns_none_on_api_failure(self, mt5_mock: MagicMock) -> None:
         import sys
 
         sys.modules["MetaTrader5"].positions_get.return_value = None

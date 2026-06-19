@@ -44,7 +44,7 @@ def global_policy() -> dict:
         "max_daily_trades": 50,
         "initial_balance": 10_000,
         "adaptive_sizing": {"enabled": False, "scope": "portfolio", "drawdown_thresholds": []},
-        "strategy_risk": {"test_strategy": 0.01},
+        "strategy_risk": {"test_strategy": {"method": "fractional", "risk_value": 1.0}},
         "log_root": "/tmp/nexus_test",  # noqa: S108
     }
 
@@ -78,7 +78,7 @@ def mock_runner() -> MagicMock:
 
 
 @pytest.fixture
-def data_handler(_mt5_mock: MagicMock) -> DataHandler:
+def data_handler(mt5_mock: MagicMock) -> DataHandler:
     from zoneinfo import ZoneInfo
 
     return DataHandler(broker_tz=ZoneInfo("Etc/GMT-3"))
@@ -166,7 +166,7 @@ class TestCheckStrategyLimits:
         assert "daily trade limit" in result.reason.lower()
 
     def test_skips_position_check_when_flag_set(
-        self, risk_manager: RiskManager, mock_runner: MagicMock, _shared_state: SharedState
+        self, risk_manager: RiskManager, mock_runner: MagicMock, shared_state: SharedState
     ) -> None:
         mock_runner.local_position_count = 99
         result = risk_manager.check_strategy_limits("test_strategy", skip_position_limit_check=True)
@@ -175,7 +175,7 @@ class TestCheckStrategyLimits:
 
 class TestCalculatePositionSize:
     def test_fractional_sizing_formula(
-        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, _mt5_mock: MagicMock
+        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, mt5_mock: MagicMock
     ) -> None:
         mt5 = sys.modules["MetaTrader5"]
         mt5.account_info.return_value = account_info
@@ -185,19 +185,19 @@ class TestCalculatePositionSize:
         assert volume == pytest.approx(0.20, abs=0.01)
 
     def test_zero_sl_distance_returns_zero(
-        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, _mt5_mock: MagicMock
+        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, mt5_mock: MagicMock
     ) -> None:
         mt5 = sys.modules["MetaTrader5"]
         mt5.account_info.return_value = account_info
         mt5.symbol_info.return_value = eurusd_info
         assert risk_manager.calculate_position_size("EURUSD", 1.10, 1.10, "test_strategy") == pytest.approx(0.0)
 
-    def test_returns_zero_on_account_info_failure(self, risk_manager: RiskManager, _mt5_mock: MagicMock) -> None:
+    def test_returns_zero_on_account_info_failure(self, risk_manager: RiskManager, mt5_mock: MagicMock) -> None:
         sys.modules["MetaTrader5"].account_info.return_value = None
         assert risk_manager.calculate_position_size("EURUSD", 1.1, 1.09, "test_strategy") == pytest.approx(0.0)
 
     def test_volume_clamped_to_min(
-        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, _mt5_mock: MagicMock
+        self, risk_manager: RiskManager, account_info: AccountInfo, eurusd_info: SymbolInfo, mt5_mock: MagicMock
     ) -> None:
         mt5 = sys.modules["MetaTrader5"]
         mt5.account_info.return_value = account_info._replace(balance=10.0)

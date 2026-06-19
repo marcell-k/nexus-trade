@@ -31,7 +31,7 @@ def _valid_profile_dict() -> dict:
             "max_drawdown_pct": 0.20,
         },
         "strategies": {
-            "sma_crossover": {"enabled": True, "risk_pct": 1.0},
+            "sma_crossover": {"enabled": True, "risk_value": 1.0},
         },
     }
 
@@ -44,7 +44,7 @@ class TestRiskProfile:
 
     def test_enabled_strategy_names(self) -> None:
         d = _valid_profile_dict()
-        d["strategies"]["disabled_strat"] = {"enabled": False, "risk_pct": 0.5}
+        d["strategies"]["disabled_strat"] = {"enabled": False, "risk_value": 0.5}
         p = RiskProfile.model_validate(d)
         assert "sma_crossover" in p.enabled_strategy_names
         assert "disabled_strat" not in p.enabled_strategy_names
@@ -97,7 +97,7 @@ class TestLoadProfile:
 
             [strategies.test_strat]
             enabled = true
-            risk_pct = 0.5
+            risk_value = 0.5
         """)
         path = tmp_path / "profile.toml"
         path.write_text(toml)

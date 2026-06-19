@@ -207,7 +207,7 @@ class TradeLogger:
                 )
 
             selected = open_rows[0]
-            trade_id, expected_entry_price, opening_sl, volume_multiplier, _ = selected
+            _ticket, trade_id, expected_entry_price, opening_sl, volume_multiplier, _ = selected
             assert isinstance(trade_id, int)
             assert isinstance(expected_entry_price, float | int)
             reconciled[ticket] = ReconciledTrade(
