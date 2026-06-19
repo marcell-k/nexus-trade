@@ -5,7 +5,7 @@ description = "Production-grade multiprocessing algorithmic trading framework fo
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "MetaTrader5>=5.0.5370",
+    "MetaTrader5>=5.0.5370; sys_platform == 'win32'",
     "numpy>=2.0",
     "pandas>=2.0",
     "pandas-stubs>=3.0.3.260530",
