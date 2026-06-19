@@ -38,7 +38,7 @@ class Position:
         return PositionCacheEntry(
             ticket=self.ticket,
             symbol=self.symbol,
-            type=self.type.as_int(),
+            type=self.type,
             volume=self.volume,
             price_open=self.price_open,
             sl=self.sl if self.sl is not None else 0.0,

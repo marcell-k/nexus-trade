@@ -670,7 +670,12 @@ class OrderExecutor:
 
     def _cancel_order(self, ticket: int) -> bool:
         result = self._order_send_with_retry({"action": TradeAction.REMOVE, "order": ticket})
-        return bool(result and result.retcode == self._retcode_done)
+        success = bool(result and result.retcode == self._retcode_done)
+        if not success:
+            rc = result.retcode if result is not None else None
+            comment = result.comment if result is not None else "no_result"
+            logger.error(f"CancelFail t={ticket} | rc={rc} | err={comment}")
+        return success
 
     def cancel_bracket_orders(
         self,

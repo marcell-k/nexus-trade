@@ -24,7 +24,7 @@ from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.core.models import (
     BracketPendingTicket,
     ExitLogData,
-    NormalizedPosition,
+    PartialClosePositionSnapshot,
     PendingTicket,
     Position,
     StandardPendingTicket,
@@ -1097,7 +1097,11 @@ class StrategyRunner:
     ) -> PartialCloseData:
         return PartialCloseData(
             trade_id=trade_id,
-            position=NormalizedPosition.from_mt5(position).to_partial_snapshot(),
+            position=PartialClosePositionSnapshot(
+                ticket=position.ticket,
+                type=position.type,
+                symbol=position.symbol,
+            ),
             closed_volume=data.closed_volume if data.closed_volume is not None else 0.0,
             remaining_volume=remaining_volume,
             expected_exit_price=data.expected_exit_price,
@@ -1248,11 +1252,14 @@ class StrategyRunner:
             self._log_full_close_execution(trade_id, pos, exit_log_data)
 
     def _monitor_exits(self, data: pd.DataFrame, preloaded_positions: list[PositionCacheEntry] | None = None) -> None:
-        positions = (
-            preloaded_positions
-            if preloaded_positions is not None
-            else self._load_strategy_positions(mode="cache", include_unknown=True)
-        )
+        if self._has_pending_bracket_orders():
+            positions = self._load_strategy_positions(mode="direct", include_unknown=True)
+        else:
+            positions = (
+                preloaded_positions
+                if preloaded_positions is not None
+                else self._load_strategy_positions(mode="cache", include_unknown=True)
+            )
         if positions is None:
             logger.error(f"{self.strategy_name:<9}: ExitMonFail reason=mt5_api_failure")
             return

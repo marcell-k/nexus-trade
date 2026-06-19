@@ -4,7 +4,7 @@ import logging
 def log_section_header(
     logger: logging.Logger,
     title: str,
-    width: int = 87,
+    width: int = 74,
     level: int = logging.INFO,
 ) -> None:
     """Log a title wrapped by separator lines."""

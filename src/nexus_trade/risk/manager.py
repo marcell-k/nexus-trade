@@ -93,6 +93,7 @@ class RiskManager:
         )
 
         self._account_cache: TTLCache[AccountInfo] = TTLCache()
+        self._drawdown_cache: TTLCache[tuple[float, float]] = TTLCache()
         self._symbol_cache: dict[str, TTLCache[SymbolInfo]] = {}
 
         logger.debug(
@@ -218,12 +219,14 @@ class RiskManager:
             return ValidationResult(False, "Global position limit reached")
         if self.global_trade_count.value >= self.global_policy["max_daily_trades"]:
             return ValidationResult(False, "Daily trade limit reached")
-        if not hasattr(self, "_drawdown_cache"):
-            self._drawdown_cache = TTLCache[tuple[float, float]]()
 
         if not self._drawdown_cache.is_valid(self.DEFAULT_DRAWDOWN_REFRESH_SECONDS):
-            state = self.shared_state
-            self._drawdown_cache.set((float(state["daily_drawdown"]), float(state["max_drawdown"])))
+            self._drawdown_cache.set(
+                (
+                    float(self.shared_state["daily_drawdown"]),
+                    float(self.shared_state["max_drawdown"]),
+                )
+            )
 
         assert self._drawdown_cache.value is not None
         daily_dd, max_dd = self._drawdown_cache.value

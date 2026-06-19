@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
-from enum import Enum
+from enum import IntEnum
 from typing import TYPE_CHECKING, Literal, Protocol, TypedDict
 
 if TYPE_CHECKING:
@@ -15,12 +15,9 @@ if TYPE_CHECKING:
     from nexus_trade.execution.request import EntryRequest
 
 
-class PositionType(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
-
-    def as_int(self) -> int:
-        return 0 if self is PositionType.BUY else 1
+class PositionType(IntEnum):
+    BUY = 0
+    SELL = 1
 
     @staticmethod
     def from_int(value: int) -> PositionType:
