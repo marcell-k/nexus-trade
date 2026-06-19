@@ -123,16 +123,16 @@ class _RingBuffer:
 class DataHandler:
     def __init__(self, broker_tz: ZoneInfo) -> None:
         self.broker_tz: ZoneInfo = broker_tz
-        self._latest_bar_cache: dict[tuple[str, int], _BarCacheEntry] = {}
-        self._ring_buffers: dict[tuple[str, int], _RingBuffer] = {}
+        self._latest_bar_cache: dict[tuple[str, int, int], _BarCacheEntry] = {}
+        self._ring_buffers: dict[tuple[str, int, int], _RingBuffer] = {}
 
     def _get_capacity(self, strategy_config: StrategyConfig[BaseStrategyParams]) -> int:
-        window = strategy_config.params.backcandles + 1
+        window = strategy_config.params.backcandles
         if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
-            return max(window, int(window * 1.3))
+            return int(window * 1.3)
         return window
 
-    def _get_or_create_ring(self, cache_key: tuple[str, int], capacity: int) -> _RingBuffer:
+    def _get_or_create_ring(self, cache_key: tuple[str, int, int], capacity: int) -> _RingBuffer:
         ring = self._ring_buffers.get(cache_key)
         if ring is None or ring.capacity != capacity:
             ring = _RingBuffer(capacity=capacity)
@@ -140,7 +140,7 @@ class DataHandler:
         return ring
 
     def _update_cache_metadata(
-        self, cache_key: tuple[str, int], bar_time_broker: pd.Timestamp, timeframe_minutes: int
+        self, cache_key: tuple[str, int, int], bar_time_broker: pd.Timestamp, timeframe_minutes: int
     ) -> None:
         tolerance_seconds = 2
         next_bar_complete_at = bar_time_broker + pd.Timedelta(minutes=timeframe_minutes, seconds=tolerance_seconds)
@@ -154,64 +154,39 @@ class DataHandler:
     def _should_skip_mt5_call(self, cached_metadata: _BarCacheEntry, now_broker: datetime) -> bool:
         return now_broker < cached_metadata.next_bar_complete_at
 
-    def _load_rates_into_ring(
-        self,
-        rates: np.ndarray,
-        ring: _RingBuffer,
-        strategy_tz: ZoneInfo,
-        timeframe_minutes: int,
-        *,
-        append_only: bool = False,
-    ) -> None:
+    def _extract_complete_bars(
+        self, rates: np.ndarray, timeframe_minutes: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """Filter `rates` (as returned by MT5) down to bars that are fully closed.
+
+        Returns (ts_ns, open, high, low, close, volume, spread), oldest first, where ts_ns is
+        each bar's *open* time as an absolute epoch-nanosecond instant (timezone-agnostic —
+        convert it for display only, never for comparison; comparing raw ints sidesteps any
+        clock-drift/jitter issues entirely).
         """
-        Parse MT5 rates array, filter complete bars, write into ring.
+        cutoff_ns = int((pd.Timestamp.now(tz="UTC") + pd.Timedelta(seconds=10)).value)
 
-        append_only=True: only append bars newer than ring's current newest.
-        append_only=False: clear ring and load all complete bars.
-        """
-        now_strategy = datetime.now(tz=strategy_tz)
-        cutoff = pd.Timestamp(now_strategy) + pd.Timedelta(seconds=2)
-
-        # Vectorised timestamp conversion: broker UTC epoch → strategy tz nanoseconds
-        ts_s = rates["time"].astype(np.int64)
-        bar_close_ns = (ts_s + timeframe_minutes * 60) * 1_000_000_000
-        cutoff_ns = int(cutoff.value)  # already ns since epoch
-
-        # Broker tz offset in seconds (MT5 timestamps are in broker local time, not UTC)
-        # DataHandler stores broker_tz for this conversion
         broker_offset_s = int(
             pd.Timestamp.now(tz=self.broker_tz).utcoffset().total_seconds()  # type: ignore[union-attr]
         )
-        ts_utc_ns = (ts_s - broker_offset_s) * 1_000_000_000
 
-        # Convert UTC ns → strategy tz ns
-        utc_index = pd.DatetimeIndex(ts_utc_ns.astype("datetime64[ns]"), tz="UTC")
-        strategy_index_ns = utc_index.tz_convert(strategy_tz).values.astype("int64")
+        ts_s = rates["time"].astype(np.int64)
+        ts_utc_s: np.ndarray = ts_s - broker_offset_s
+        bar_close_utc_ns: np.ndarray = (ts_utc_s + timeframe_minutes * 60) * 1_000_000_000
+        bar_open_utc_ns: np.ndarray = ts_utc_s * 1_000_000_000
 
-        complete_mask = bar_close_ns <= cutoff_ns
-        if not complete_mask.any():
-            return
-
-        if append_only and not ring.is_empty:
-            newest_ns = ring.latest_timestamp_ns()
-            complete_mask = complete_mask & (strategy_index_ns > newest_ns)
-            if not complete_mask.any():
-                return
-
-        if not append_only:
-            ring.clear()
-
+        complete_mask = bar_close_utc_ns <= cutoff_ns
         indices = np.where(complete_mask)[0]
-        o = rates["open"][indices].astype(np.float64)
-        h = rates["high"][indices].astype(np.float64)
-        lo = rates["low"][indices].astype(np.float64)
-        c = rates["close"][indices].astype(np.float64)
-        v = rates["tick_volume"][indices].astype(np.float64)
-        sp = rates["spread"][indices].astype(np.float64)
-        ts = strategy_index_ns[indices]
 
-        for i in range(len(indices)):
-            ring.append(int(ts[i]), o[i], h[i], lo[i], c[i], v[i], sp[i])
+        return (
+            bar_open_utc_ns[indices],
+            rates["open"][indices].astype(np.float64),
+            rates["high"][indices].astype(np.float64),
+            rates["low"][indices].astype(np.float64),
+            rates["close"][indices].astype(np.float64),
+            rates["tick_volume"][indices].astype(np.float64),
+            rates["spread"][indices].astype(np.float64),
+        )
 
     def _ring_to_output(
         self,
@@ -224,72 +199,41 @@ class DataHandler:
         df = ring.to_dataframe(strategy_tz)
         if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
             df = self._filter_session_hours(df, strategy_config)
-        return df.tail(strategy_config.params.backcandles + 1) if len(df) > 0 else None
+        return df.tail(strategy_config.params.backcandles) if len(df) > 0 else None
 
     def get_latest_bars(self, strategy_name: str) -> pd.DataFrame | None:
         strategy_config = STRATEGY_CONFIG_REGISTRY.get_strategy_config(strategy_name)
         symbol = strategy_config.params.symbol
         timeframe_mt5 = string_to_timeframe(strategy_config.params.timeframe)
-        cache_key: tuple[str, int] = (symbol, int(timeframe_mt5))
+        capacity = self._get_capacity(strategy_config)
+        cache_key: tuple[str, int, int] = (symbol, int(timeframe_mt5), capacity)
         strategy_tz = STRATEGY_CONFIG_REGISTRY.get_tz(strategy_name)
         timeframe_minutes = TIMEFRAME_TO_MINUTES[TimeFrame(int(timeframe_mt5))]
-        capacity = self._get_capacity(strategy_config)
         now_broker = datetime.now(self.broker_tz)
 
         cached_metadata = self._latest_bar_cache.get(cache_key)
         ring = self._get_or_create_ring(cache_key, capacity)
 
-        # Bar still forming — return cached ring without any MT5 call
         if (
             cached_metadata is not None
             and cached_metadata.cache_seeded
+            and not ring.is_empty
             and self._should_skip_mt5_call(cached_metadata, now_broker)
         ):
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
-        # Cold start or gap — full refresh
-        if cached_metadata is None or not cached_metadata.cache_seeded:
+        if cached_metadata is None or not cached_metadata.cache_seeded or ring.is_empty:
             return self._full_refresh(
-                symbol,
-                int(timeframe_mt5),
-                timeframe_minutes,
-                capacity,
-                cache_key,
-                ring,
-                strategy_tz,
-                strategy_config,
+                symbol, int(timeframe_mt5), timeframe_minutes, capacity, cache_key, ring, strategy_tz, strategy_config
             )
 
-        # Bar just completed — check how many bars elapsed
-        bar_close_time = cached_metadata.bar_time + pd.Timedelta(minutes=timeframe_minutes)
-        bars_elapsed = (now_broker - bar_close_time).total_seconds() / 60.0 / timeframe_minutes
-
-        if bars_elapsed < 1.0:
-            # Same bar — no new complete bar yet
-            return self._ring_to_output(ring, strategy_tz, strategy_config)
-
-        if bars_elapsed <= 1.1:
-            # Exactly one new bar — incremental fetch (2 bars to handle race)
-            return self._incremental_fetch(
-                symbol,
-                int(timeframe_mt5),
-                timeframe_minutes,
-                cache_key,
-                ring,
-                strategy_tz,
-                strategy_config,
-            )
-
-        # Gap — full refresh
-        return self._full_refresh(
-            symbol,
-            int(timeframe_mt5),
-            timeframe_minutes,
-            capacity,
-            cache_key,
-            ring,
-            strategy_tz,
-            strategy_config,
+        # Past the freshness window. Don't guess how many bars elapsed from the clock —
+        # fetch a small lookback and let the data tell us: nothing new, a clean append,
+        # or a real gap that needs a full refresh. This is what removes the dependence
+        # on millisecond-level scheduler/clock timing that caused the old elapsed-based
+        # branch to flicker between SAME-BAR / INCREMENTAL / GAP-REFRESH.
+        return self._incremental_fetch(
+            symbol, int(timeframe_mt5), timeframe_minutes, capacity, cache_key, ring, strategy_tz, strategy_config
         )
 
     def _incremental_fetch(
@@ -297,25 +241,45 @@ class DataHandler:
         symbol: str,
         timeframe_mt5: int,
         timeframe_minutes: int,
-        cache_key: tuple[str, int],
+        capacity: int,
+        cache_key: tuple[str, int, int],
         ring: _RingBuffer,
         strategy_tz: ZoneInfo,
         strategy_config: StrategyConfig[BaseStrategyParams],
     ) -> pd.DataFrame | None:
-        rates = mt5.copy_rates_from_pos(symbol, timeframe_mt5, 0, 2)
+        # Small headroom window: enough to absorb a few missed/delayed polls without
+        # paying for a full `capacity`-sized fetch every time.
+        lookback = 5
+        rates = mt5.copy_rates_from_pos(symbol, timeframe_mt5, 0, lookback)
         if rates is None or len(rates) == 0:
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
-        prev_size = ring.size
-        self._load_rates_into_ring(rates, ring, strategy_tz, timeframe_minutes, append_only=True)
-
-        if ring.size == prev_size:
-            # No new complete bar appended
+        ts_ns, o, h, lo, c, v, sp = self._extract_complete_bars(rates, timeframe_minutes)
+        if len(ts_ns) == 0 or ring.is_empty:
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
-        # Update metadata to newest bar time
+        old_newest_ns = ring.latest_timestamp_ns()
+        new_mask = ts_ns > old_newest_ns
+
+        if not new_mask.any():
+            return self._ring_to_output(ring, strategy_tz, strategy_config)
+
+        interval_ns = timeframe_minutes * 60 * 1_000_000_000
+        new_indices = np.where(new_mask)[0]
+        earliest_new_ns = int(ts_ns[new_indices[0]])
+
+        if earliest_new_ns - old_newest_ns > interval_ns:
+            # The lookback window didn't reach back far enough to bridge contiguously —
+            # bars were genuinely missed (e.g. the bot was paused/blocked). Full refresh.
+            return self._full_refresh(
+                symbol, timeframe_mt5, timeframe_minutes, capacity, cache_key, ring, strategy_tz, strategy_config
+            )
+
+        for i in new_indices:
+            ring.append(int(ts_ns[i]), float(o[i]), float(h[i]), float(lo[i]), float(c[i]), float(v[i]), float(sp[i]))
+
         newest_ns = ring.latest_timestamp_ns()
-        newest_ts = pd.Timestamp(newest_ns, unit="ns", tz=strategy_tz).tz_convert(self.broker_tz)
+        newest_ts = pd.Timestamp(newest_ns, unit="ns", tz=self.broker_tz)
         self._update_cache_metadata(cache_key, newest_ts, timeframe_minutes)
 
         return self._ring_to_output(ring, strategy_tz, strategy_config)
@@ -326,7 +290,7 @@ class DataHandler:
         timeframe_mt5: int,
         timeframe_minutes: int,
         capacity: int,
-        cache_key: tuple[str, int],
+        cache_key: tuple[str, int, int],
         ring: _RingBuffer,
         strategy_tz: ZoneInfo,
         strategy_config: StrategyConfig[BaseStrategyParams],
@@ -335,13 +299,16 @@ class DataHandler:
         if rates is None or len(rates) == 0:
             return None
 
-        self._load_rates_into_ring(rates, ring, strategy_tz, timeframe_minutes, append_only=False)
-
-        if ring.is_empty:
+        ts_ns, o, h, lo, c, v, sp = self._extract_complete_bars(rates, timeframe_minutes)
+        if len(ts_ns) == 0:
             return None
 
+        ring.clear()
+        for i in range(len(ts_ns)):
+            ring.append(int(ts_ns[i]), float(o[i]), float(h[i]), float(lo[i]), float(c[i]), float(v[i]), float(sp[i]))
+
         newest_ns = ring.latest_timestamp_ns()
-        newest_ts = pd.Timestamp(newest_ns, unit="ns", tz=strategy_tz).tz_convert(self.broker_tz)
+        newest_ts = pd.Timestamp(newest_ns, unit="ns", tz=self.broker_tz)
         self._update_cache_metadata(cache_key, newest_ts, timeframe_minutes)
 
         return self._ring_to_output(ring, strategy_tz, strategy_config)

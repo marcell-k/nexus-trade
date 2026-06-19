@@ -342,13 +342,14 @@ class Orchestrator:
         return seconds_since_midnight % interval_seconds < boundary_tolerance
 
     def monitor_heartbeats(self) -> None:
-        last_reset_date = datetime.now().date()
+        broker_tz = self.account_config.broker_tz
+        last_reset_date = datetime.now(tz=broker_tz).date()
         last_log_time = time.time()
 
         while not self.shared_state["shutdown_flag"]:
             self.refresh_position_cache()
 
-            current_time = datetime.now()
+            current_time = datetime.now(tz=broker_tz)
             active = sum(1 for p in self.strategy_processes.values() if p.is_alive())
             cache_pos = self.global_position_count.value
             total_tr = self.global_trade_count.value
@@ -485,7 +486,7 @@ class Orchestrator:
         logger.debug(f"DDMaxRefresh max={max_dd * 100:.2f}% | equity={current_equity:.2f} | peak={peak_equity:.2f}")
 
     def _refresh_daily_drawdown(self, account: AccountInfo) -> None:
-        now = datetime.now()
+        now = datetime.now(tz=self.account_config.broker_tz)
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         current_equity = float(account.equity)
