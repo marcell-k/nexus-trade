@@ -13,6 +13,16 @@ if TYPE_CHECKING:
     from nexus_trade.core.types import PositionCacheEntry
 
 
+def _install_mt5_stub() -> None:
+    """Install a placeholder MetaTrader5 module so production code can import it on non-Windows CI."""
+    if "MetaTrader5" in sys.modules:
+        return
+    sys.modules["MetaTrader5"] = MagicMock(name="MetaTrader5Stub")
+
+
+_install_mt5_stub()
+
+
 class _AccountInfo(NamedTuple):
     login: int = 12_345_678
     trade_mode: int = 0
