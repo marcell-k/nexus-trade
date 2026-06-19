@@ -507,7 +507,10 @@ class StrategyRunner:
             logger.error(f"{self.strategy_name:<9}: OrphanPos t={ticket} | reason=no_metadata")
             return None, pos.price_open, pos.sl, pos.price_open
 
-        metadata = self.entry_metadata[trade_id]
+        metadata = self.entry_metadata.get(trade_id)
+        if metadata is None:
+            logger.error(f"{self.strategy_name:<9}: OrphanPos t={ticket} | id={trade_id} | reason=metadata_evicted")
+            return trade_id, pos.price_open, pos.sl, pos.price_open
         entry_request = metadata.get("entry_request")
         entry_price = pos.price_open
 
@@ -623,7 +626,17 @@ class StrategyRunner:
         with self.position_state_lock:
             for ticket in closed_tickets:
                 trade_id = self.ticket_to_trade_id.pop(ticket, None)
-                metadata = self.entry_metadata.pop(trade_id, None) if trade_id is not None else None
+                if trade_id is not None:
+                    # Only evict metadata when no other tracked ticket still references this
+                    # trade_id; a shared id can survive if the dual-fill guard was bypassed.
+                    still_referenced = trade_id in self.ticket_to_trade_id.values()
+                    metadata = (
+                        self.entry_metadata.pop(trade_id, None)
+                        if not still_referenced
+                        else self.entry_metadata.get(trade_id)
+                    )
+                else:
+                    metadata = None
                 snapshot = metadata.get("position_snapshot") if metadata is not None else None
                 was_known = ticket in self.known_positions
                 self.known_positions.discard(ticket)
@@ -674,6 +687,17 @@ class StrategyRunner:
         ticket = pos.ticket
         with self.position_state_lock:
             trade_id = self.ticket_to_trade_id.get(ticket)
+            # Dual-fill guard: bracket entries with both legs downgraded to market orders
+            # map both position tickets to the same trade_id in _store_entry_metadata_bracket.
+            # The second leg must be decoupled into its own trade_id to prevent a UNIQUE
+            # constraint on (trade_id, partial_sequence=0) and snapshot ticket corruption.
+            if trade_id is not None:
+                _prior = self.entry_metadata.get(trade_id)
+                if _prior is not None and _prior.get("position_snapshot") is not None:
+                    logger.warning(
+                        f"{self.strategy_name:<9}: DualFill t={ticket} | id={trade_id} | action=split_trade_id"
+                    )
+                    trade_id = None
             needs_resolution = (
                 trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
             )
