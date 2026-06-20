@@ -128,6 +128,9 @@ class RiskManager:
         result = self.check_global_risk()
         if not result.can_trade:
             return result
+        result = self.check_strategy_limits(strategy_name)
+        if not result.can_trade:
+            return result
         result = self._check_trading_hours(strategy_name)
         if not result.can_trade:
             return result

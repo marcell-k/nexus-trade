@@ -703,7 +703,6 @@ class StrategyRunner:
             needs_resolution = (
                 trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
             )
-            metadata = self.entry_metadata.get(trade_id) if trade_id is not None else None
         if trade_id is None:
             trade_id = self._resolve_pending_ticket(pos)
         elif needs_resolution:
@@ -717,6 +716,7 @@ class StrategyRunner:
                 logger.error(f"{self.strategy_name:<9}: OrphanFillFail t={ticket} | action=skip")
                 return
 
+        metadata = self.entry_metadata.get(trade_id)
         if metadata is None:
             logger.error(f"{self.strategy_name:<9}: FillMetaMissing id={trade_id} | action=skip")
             return

@@ -110,6 +110,7 @@ class NewsFilter:
     def _load_configuration(self) -> None:
         """Load timezone and filter settings from strategy config."""
         self.broker_tz: ZoneInfo = self.data_handler.broker_tz
+        self.calendar_path = self.data_handler.calendar_path
         cfg = STRATEGY_CONFIG_REGISTRY.get_strategy_config(self.strategy_name)
         th = cfg.trading_hours
         tz_name: str = (th.timezone if th is not None else None) or cfg.params.timezone
