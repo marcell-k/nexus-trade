@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 import MetaTrader5 as mt
 
-from nexus_trade.core.models import NormalizedPosition, normalize_order
+from nexus_trade.core.models import Position, normalize_order
 
 if TYPE_CHECKING:
     from nexus_trade.core.protocols import ProcessLock
@@ -88,7 +88,7 @@ class PositionRepository:
         return [
             normalized
             for pos in raw
-            if (normalized := NormalizedPosition.from_mt5(pos).to_cache_entry())["magic_number"] in magic_numbers
+            if (normalized := Position.from_mt5(pos).to_cache_entry())["magic_number"] in magic_numbers
         ]
 
     def get_managed_orders(
@@ -110,7 +110,7 @@ class PositionRepository:
             return None
         if not raw:
             return None
-        return NormalizedPosition.from_mt5(raw[0]).to_cache_entry()
+        return Position.from_mt5(raw[0]).to_cache_entry()
 
     def get_positions_by_tickets(
         self,
@@ -123,14 +123,12 @@ class PositionRepository:
             raw = mt.positions_get(ticket=tickets[0])
             if raw is None:
                 return None
-            return {tickets[0]: NormalizedPosition.from_mt5(raw[0]).to_cache_entry()} if raw else {}
+            return {tickets[0]: Position.from_mt5(raw[0]).to_cache_entry()} if raw else {}
         raw_all = mt.positions_get()
         if raw_all is None:
             return None
         ticket_set = frozenset(tickets)
-        return {
-            pos.ticket: NormalizedPosition.from_mt5(pos).to_cache_entry() for pos in raw_all if pos.ticket in ticket_set
-        }
+        return {pos.ticket: Position.from_mt5(pos).to_cache_entry() for pos in raw_all if pos.ticket in ticket_set}
 
     def _read_cache(
         self,
@@ -174,7 +172,7 @@ class PositionRepository:
         return [
             normalized
             for pos in raw
-            if (normalized := NormalizedPosition.from_mt5(pos).to_cache_entry())["magic_number"] == magic
+            if (normalized := Position.from_mt5(pos).to_cache_entry())["magic_number"] == magic
         ]
 
     def cache_age_seconds(self) -> float:

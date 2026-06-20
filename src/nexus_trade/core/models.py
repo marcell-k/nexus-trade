@@ -21,7 +21,7 @@ _CFG = ConfigDict(frozen=True, strict=True, extra="forbid")
 
 @dataclass(slots=True, config=_CFG)
 class Position:
-    """Typed Position snapshot."""
+    """Position snapshot."""
 
     ticket: int
     symbol: str
@@ -32,6 +32,27 @@ class Position:
     sl: float | None
     tp: float | None
     profit: float
+    swap: float
+    time: int
+
+    @classmethod
+    def from_mt5(cls, pos: object) -> Position:
+        """Convert MT5 position namedtuple."""
+        raw_sl = float(getattr(pos, "sl", 0.0))
+        raw_tp = float(getattr(pos, "tp", 0.0))
+        return cls(
+            ticket=int(getattr(pos, "ticket", 0)),
+            symbol=str(getattr(pos, "symbol", "")),
+            type=PositionType.from_int(int(getattr(pos, "type", 0))),
+            magic_number=int(getattr(pos, "magic", 0)),
+            volume=float(getattr(pos, "volume", 0.0)),
+            price_open=float(getattr(pos, "price_open", 0.0)),
+            sl=raw_sl if raw_sl != 0.0 else None,
+            tp=raw_tp if raw_tp != 0.0 else None,
+            profit=float(getattr(pos, "profit", 0.0)),
+            swap=float(getattr(pos, "swap", 0.0)),
+            time=int(getattr(pos, "time", 0)),
+        )
 
     def to_cache_entry(self) -> PositionCacheEntry:
         return PositionCacheEntry(
@@ -42,56 +63,6 @@ class Position:
             price_open=self.price_open,
             sl=self.sl if self.sl is not None else 0.0,
             tp=self.tp if self.tp is not None else 0.0,
-            profit=self.profit,
-            swap=0.0,
-            magic_number=self.magic_number,
-            time=0,
-        )
-
-
-@dataclass(frozen=True, slots=True)
-class NormalizedPosition:
-    """Single-responsibility position data class — one conversion path."""
-
-    ticket: int
-    symbol: str
-    type: int  # 0=BUY, 1=SELL
-    volume: float
-    price_open: float
-    sl: float
-    tp: float
-    profit: float
-    swap: float
-    magic_number: int
-    time: int
-
-    @classmethod
-    def from_mt5(cls, pos: object) -> NormalizedPosition:
-        """Convert MT5 position namedtuple."""
-        return cls(
-            ticket=int(getattr(pos, "ticket", 0)),
-            symbol=str(getattr(pos, "symbol", "")),
-            type=int(getattr(pos, "type", 0)),
-            volume=float(getattr(pos, "volume", 0.0)),
-            price_open=float(getattr(pos, "price_open", 0.0)),
-            sl=float(getattr(pos, "sl", 0.0)),
-            tp=float(getattr(pos, "tp", 0.0)),
-            profit=float(getattr(pos, "profit", 0.0)),
-            swap=float(getattr(pos, "swap", 0.0)),
-            magic_number=int(getattr(pos, "magic_number", 0)),
-            time=int(getattr(pos, "time", 0)),
-        )
-
-    def to_cache_entry(self) -> PositionCacheEntry:
-        """Convert to shared-state TypedDict."""
-        return PositionCacheEntry(
-            ticket=self.ticket,
-            symbol=self.symbol,
-            type=self.type,
-            volume=self.volume,
-            price_open=self.price_open,
-            sl=self.sl,
-            tp=self.tp,
             profit=self.profit,
             swap=self.swap,
             magic_number=self.magic_number,
@@ -203,6 +174,8 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
         sl=entry["sl"] if entry["sl"] != 0.0 else None,
         tp=entry["tp"] if entry["tp"] != 0.0 else None,
         profit=entry["profit"],
+        swap=entry["swap"],
+        time=entry["time"],
     )
 
 

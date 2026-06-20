@@ -5,7 +5,6 @@ from __future__ import annotations
 import pytest
 
 from nexus_trade.core.models import (
-    NormalizedPosition,
     Position,
     Tick,
     cache_entry_to_position,
@@ -14,7 +13,7 @@ from nexus_trade.core.models import (
 from nexus_trade.core.types import PositionCacheEntry, PositionType
 
 
-class TestNormalizedPositionFromMt5:
+class TestPositionFromMt5:
     def _raw(self, **overrides: object) -> object:
         class _Raw:
             ticket = 100_001
@@ -34,7 +33,7 @@ class TestNormalizedPositionFromMt5:
         return _Raw()
 
     def test_all_fields_mapped(self) -> None:
-        pos = NormalizedPosition.from_mt5(self._raw())
+        pos = Position.from_mt5(self._raw())
         assert pos.ticket == 100_001
         assert pos.symbol == "EURUSD"
         assert pos.type == 0
@@ -49,26 +48,31 @@ class TestNormalizedPositionFromMt5:
         class _Sparse:
             ticket = 99
 
-        pos = NormalizedPosition.from_mt5(_Sparse())
+        pos = Position.from_mt5(_Sparse())
         assert pos.ticket == 99
         assert pos.symbol == ""
         assert pos.volume == pytest.approx(0.0)
         assert pos.magic_number == 0
 
     def test_type_coercion(self) -> None:
-        pos = NormalizedPosition.from_mt5(self._raw(ticket="55555", magic_number="99"))
+        pos = Position.from_mt5(self._raw(ticket="55555", magic_number="99"))
         assert isinstance(pos.ticket, int)
         assert isinstance(pos.magic_number, int)
         assert pos.ticket == 55555
         assert pos.magic_number == 99
 
+    def test_zero_sl_tp_become_none(self) -> None:
+        pos = Position.from_mt5(self._raw(sl=0.0, tp=0.0))
+        assert pos.sl is None
+        assert pos.tp is None
 
-class TestNormalizedPositionToCacheEntry:
-    def _pos(self) -> NormalizedPosition:
-        return NormalizedPosition(
+
+class TestPositionToCacheEntry:
+    def _pos(self) -> Position:
+        return Position(
             ticket=1,
             symbol="EURUSD",
-            type=0,
+            type=PositionType.BUY,
             volume=0.1,
             price_open=1.1,
             sl=1.09,
@@ -95,13 +99,18 @@ class TestNormalizedPositionToCacheEntry:
         }
         assert required.issubset(self._pos().to_cache_entry().keys())
 
+    def test_swap_and_time_round_trip(self) -> None:
+        entry = self._pos().to_cache_entry()
+        assert entry["swap"] == pytest.approx(-0.1)
+        assert entry["time"] == 100
 
-class TestNormalizedPositionToPartialSnapshot:
+
+class TestPositionToPartialSnapshot:
     def test_fields(self) -> None:
-        pos = NormalizedPosition(
+        pos = Position(
             ticket=777,
             symbol="GBPUSD",
-            type=1,
+            type=PositionType.SELL,
             volume=0.2,
             price_open=1.25,
             sl=1.26,
@@ -114,7 +123,7 @@ class TestNormalizedPositionToPartialSnapshot:
         snap = pos.to_partial_snapshot()
         assert snap.ticket == 777
         assert snap.symbol == "GBPUSD"
-        assert snap.type == 1
+        assert snap.type == PositionType.SELL
         assert snap.swap == pytest.approx(0.0)
 
 
@@ -196,6 +205,8 @@ class TestPosition:
             sl=None,
             tp=None,
             profit=0.0,
+            swap=0.0,
+            time=0,
         )
         with pytest.raises((TypeError, AttributeError)):
             pos.ticket = 99  # type: ignore[misc]

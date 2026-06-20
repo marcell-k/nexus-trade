@@ -24,7 +24,7 @@ import pandas as pd
 from MetaTrader5 import TradeDeal
 
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
-from nexus_trade.core.models import NormalizedPosition
+from nexus_trade.core.models import Position
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType, ReconciledTrade
 from nexus_trade.utils.format import format_price_display
@@ -363,7 +363,7 @@ class TradeLogger:
     def log_partial_close(self, data: PartialCloseData) -> None:
         """Log partial position close (creates new row with incremented partial_sequence)."""
         exit_date, exit_time = self._format_datetime(datetime.now(tz=self.strategy_tz))
-        position = NormalizedPosition.from_mt5(data.position).to_partial_snapshot()
+        position = Position.from_mt5(data.position).to_partial_snapshot()
 
         read_conn = self._get_connection()
         next_partial = self._get_next_partial_sequence(read_conn, data.trade_id)

@@ -82,6 +82,7 @@ def _build_news_filter(
     """Construct NewsFilter with pre-loaded calendar — bypasses file I/O and registry."""
     dh = MagicMock()
     dh.broker_tz = BROKER_TZ
+    dh.calendar_path = None
 
     with patch("nexus_trade.filters.news.STRATEGY_CONFIG_REGISTRY") as reg:
         cfg = MagicMock()

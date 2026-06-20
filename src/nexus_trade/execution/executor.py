@@ -20,7 +20,7 @@ from nexus_trade.core.constants import (
     TimeInForce,
     TradeAction,
 )
-from nexus_trade.core.models import NormalizedPosition, Tick, normalize_order
+from nexus_trade.core.models import Position, Tick, normalize_order
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.execution.request import (
@@ -683,7 +683,7 @@ class OrderExecutor:
         if preloaded_positions is not None:
             normalized_positions = preloaded_positions
         else:
-            normalized_positions = [NormalizedPosition.from_mt5(p).to_cache_entry() for p in (mt.positions_get() or ())]
+            normalized_positions = [Position.from_mt5(p).to_cache_entry() for p in (mt.positions_get() or ())]
 
         if preloaded_orders is not None:
             normalized_orders = preloaded_orders
