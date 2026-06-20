@@ -131,7 +131,7 @@ class DataHandler:
 
     def _get_capacity(self, strategy_config: StrategyConfig[BaseStrategyParams]) -> int:
         window = strategy_config.params.backcandles
-        if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
+        if strategy_config.trading_hours.enabled:
             return int(window * 1.3)
         return window
 
@@ -200,7 +200,7 @@ class DataHandler:
         if ring.is_empty:
             return None
         df = ring.to_dataframe(strategy_tz)
-        if strategy_config.trading_hours is not None and strategy_config.trading_hours.enabled:
+        if strategy_config.trading_hours.enabled:
             df = self._filter_session_hours(df, strategy_config)
         return df.tail(strategy_config.params.backcandles) if len(df) > 0 else None
 
@@ -326,7 +326,7 @@ class DataHandler:
         self, df: pd.DataFrame, strategy_config: StrategyConfig[BaseStrategyParams]
     ) -> pd.DataFrame:
         th = strategy_config.trading_hours
-        if th is None or not th.enabled or not th.sessions:
+        if not th.enabled or not th.sessions:
             return df
         if not isinstance(df.index, pd.DatetimeIndex):
             raise TypeError("DataFrame index must be a DatetimeIndex")

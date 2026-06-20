@@ -11,6 +11,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import pytest
 
+from nexus_trade.config.strategy import TradingHoursConfig
 from nexus_trade.filters.news import NewsFilter, preprocess_calendar_file
 
 if TYPE_CHECKING:
@@ -91,7 +92,7 @@ def _build_news_filter(
         cfg.filters.news.enabled = True
         cfg.filters.news.currencies = currencies or ["USD"]
         cfg.filters.news.buffer_minutes = buffer_minutes
-        cfg.trading_hours = None
+        cfg.trading_hours = TradingHoursConfig(enabled=False)
         reg.get_strategy_config.return_value = cfg
 
         nf = NewsFilter(data_handler=dh, strategy_name="test")

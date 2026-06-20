@@ -75,7 +75,7 @@ class StrategyConfig[T_Params: BaseStrategyParams](FrozenModel):
     params: T_Params
     execution: ExecutionConfig
     filters: FiltersConfig = Field(default_factory=FiltersConfig)
-    trading_hours: TradingHoursConfig | None
+    trading_hours: TradingHoursConfig
     risk: RiskConfig = Field(default_factory=RiskConfig)
 
     @computed_field

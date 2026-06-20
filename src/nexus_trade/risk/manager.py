@@ -349,7 +349,7 @@ class RiskManager:
 
     def _check_trading_hours(self, strategy_name: str) -> ValidationResult:
         th = self.strategy_config.trading_hours
-        if th is None or not th.enabled or not th.sessions:
+        if not th.enabled or not th.sessions:
             return ValidationResult(True, "TradingHours disabled")
 
         from zoneinfo import ZoneInfo

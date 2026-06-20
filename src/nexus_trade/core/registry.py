@@ -39,8 +39,7 @@ class StrategyConfigRegistry:
             if strategy_name not in self._tzs:
                 cfg = self.get_strategy_config(strategy_name)
                 th = cfg.trading_hours
-                tz_name: str = (th.timezone if th is not None else None) or cfg.params.timezone or "UTC"
-
+                tz_name: str = th.timezone or cfg.params.timezone or "UTC"
                 self._tzs[strategy_name] = ZoneInfo(tz_name)
             return self._tzs[strategy_name]
 
