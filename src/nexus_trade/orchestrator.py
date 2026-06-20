@@ -614,5 +614,5 @@ class Orchestrator:
 
         if managed_orders:
             tickets = [o.ticket for o in managed_orders]
-            cancelled = sum(1 for t in tickets if executor._cancel_order(t))
+            cancelled = sum(1 for t in tickets if executor.cancel_order(t))
             logger.info(f"ForceCancelOrd ok={cancelled}/{len(tickets)}")

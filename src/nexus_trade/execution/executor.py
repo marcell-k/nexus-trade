@@ -432,7 +432,7 @@ class OrderExecutor:
         if not ok:
             logger.error(f"BrktSellFail sym={symbol} | err={error_msg}")
             if buy_raw is not None:
-                self._cancel_order(buy_raw.order)
+                self.cancel_order(buy_raw.order)
             return None, None
 
         return buy_raw, sell_raw
@@ -667,7 +667,7 @@ class OrderExecutor:
         logger.info(f"ModOK t={ticket} | sl={final_sl} | tp={final_tp}")
         return True
 
-    def _cancel_order(self, ticket: int) -> bool:
+    def cancel_order(self, ticket: int) -> bool:
         result = self._order_send_with_retry({"action": TradeAction.REMOVE, "order": ticket})
         success = bool(result and result.retcode == self._retcode_done)
         if not success:
@@ -717,7 +717,7 @@ class OrderExecutor:
             if o.symbol in symbol_set
             and o.magic in magic_set
             and (o.symbol, o.magic) in dual_fill_keys
-            and self._cancel_order(o.ticket)
+            and self.cancel_order(o.ticket)
         )
         if dual_cancelled:
             logger.info(f"DualFillCancel n={dual_cancelled}")
@@ -742,7 +742,7 @@ class OrderExecutor:
             should_cancel = (pos_type == mt.POSITION_TYPE_BUY and o.type == mt.ORDER_TYPE_SELL_STOP) or (
                 pos_type == mt.POSITION_TYPE_SELL and o.type == mt.ORDER_TYPE_BUY_STOP
             )
-            if should_cancel and self._cancel_order(o.ticket):
+            if should_cancel and self.cancel_order(o.ticket):
                 results[o.symbol][o.magic] += 1
                 logger.debug(
                     f"OCOCancel sym={o.symbol} | m={o.magic} | ot={o.type} | t={o.ticket} | "

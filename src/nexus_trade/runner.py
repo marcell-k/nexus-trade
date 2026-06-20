@@ -817,7 +817,7 @@ class StrategyRunner:
             metadata["opening_sl"] = pos.sl if pos.sl else None
 
         opposite_ticket = conditions.sell_order_ticket if is_buy else conditions.buy_order_ticket
-        if opposite_ticket and self.executor._cancel_order(opposite_ticket):
+        if opposite_ticket and self.executor.cancel_order(opposite_ticket):
             logger.info(f"{self.strategy_name:<9}: BracketOppCancel t={opposite_ticket}")
 
         self._cleanup_pending(pending_trade_id, composite_key)
@@ -1362,7 +1362,7 @@ class StrategyRunner:
             logger.error(f"{self.strategy_name:<9}: ShutdownRecFail reason=orders_get_failed")
             return
 
-        cancelled = sum(1 for order in orders if self.executor._cancel_order(order.ticket))
+        cancelled = sum(1 for order in orders if self.executor.cancel_order(order.ticket))
         if cancelled:
             logger.info(f"{self.strategy_name:<9}: ShutdownOrd cancelled={cancelled}")
 
