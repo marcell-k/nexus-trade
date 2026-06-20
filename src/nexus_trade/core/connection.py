@@ -20,8 +20,6 @@ class ConnectionState(Enum):
 
 
 class MT5Connection:
-    # Define your backoff seconds as a class attribute to fix the missing variable bug
-
     def __init__(self, config: AccountConfig, connection_check_ttl: int = 60) -> None:
         self.config: AccountConfig = config
         self.state: ConnectionState = ConnectionState.DISCONNECTED
@@ -71,7 +69,7 @@ class MT5Connection:
         try:
             mt5.shutdown()
             logger.debug("ConnClosed")
-        except Exception as e:
+        except OSError as e:
             logger.error(f"ConnCloseErr err={e}", exc_info=True)
         finally:
             self._set_disconnected()
@@ -93,14 +91,6 @@ class MT5Connection:
 
         self._set_connected()
         return True
-
-    def ensure_connected(self) -> bool:
-        """Ensure MT5 connection is active, attempt connection if disconnected."""
-        if self.is_connected():
-            return True
-
-        logger.warning("ConnLost action=reconnect")
-        return self.connect()
 
     def _validate_account(self, account_info: AccountInfo | None) -> bool:
         if account_info is None:
