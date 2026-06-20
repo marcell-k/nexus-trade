@@ -22,8 +22,9 @@ def calculate_rsi(df: pd.DataFrame, period: int, column: str = "Close") -> pd.Se
     loss = np.clip(-delta, 0.0, None)
     avg_gain = _rma(pd.Series(gain, index=df.index, copy=False), period)
     avg_loss = _rma(pd.Series(loss, index=df.index, copy=False), period)
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    return rs.ffill().fillna(50)
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return rsi.fillna(50)
 
 
 def calculate_adx(df: pd.DataFrame, period: int) -> pd.Series:

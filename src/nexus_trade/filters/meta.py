@@ -80,6 +80,6 @@ def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callabl
 
     extractor: object = getattr(module, "extract_features", None)
     if not callable(extractor):
-        logger.error(...)
+        logger.error(f"{strategy_name}: extract_features not callable in features module")
         return None
     return cast("Callable[[pd.DataFrame], pd.DataFrame]", extractor)

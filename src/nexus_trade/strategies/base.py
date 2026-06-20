@@ -36,9 +36,8 @@ class BaseStrategy[T_Params: BaseStrategyParams](ABC):
     3. ``generate_exit_signal``   — every minute, for every open position
     """
 
-    strategy_name: str
-
-    def __init__(self, params: T_Params) -> None:
+    def __init__(self, strategy_name: str, params: T_Params) -> None:
+        self.strategy_name = strategy_name
         self.params: T_Params = params
 
     @abstractmethod
