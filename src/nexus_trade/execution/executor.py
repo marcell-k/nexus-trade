@@ -169,7 +169,7 @@ class OrderExecutor:
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
-            "comment": request.comment,
+            "comment": request.comment or config.execution.comment_prefix,
             "type_filling": type_filling,
             "type_time": TimeInForce.GTC,
         }
@@ -216,7 +216,7 @@ class OrderExecutor:
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
-            "comment": request.comment,
+            "comment": request.comment or config.execution.comment_prefix,
             "type_filling": type_filling,
             "type_time": type_time,
         }
@@ -328,6 +328,7 @@ class OrderExecutor:
             is_buy=False,
         )
 
+        comment = request.comment or str(strategy_config.execution.comment_prefix)
         buy_order = self._build_bracket_request(
             buy_action,
             buy_type,
@@ -339,6 +340,7 @@ class OrderExecutor:
             strategy_config,
             type_filling,
             expiration_timestamp,
+            comment,
         )
         sell_order = self._build_bracket_request(
             sell_action,
@@ -351,6 +353,7 @@ class OrderExecutor:
             strategy_config,
             type_filling,
             expiration_timestamp,
+            comment,
         )
         return buy_order, sell_order
 
@@ -392,6 +395,7 @@ class OrderExecutor:
         strategy_config: StrategyConfig[BaseStrategyParams],
         type_filling: OrderFilling,
         expiration_timestamp: int | None,
+        comment: str,
     ) -> MT5EntryRequest | MT5Request:
         is_pending_with_exp = bool(expiration_timestamp and action == TradeAction.PENDING)
         req: MT5EntryRequest = {
@@ -404,7 +408,7 @@ class OrderExecutor:
             "tp": float(tp),
             "deviation": strategy_config.execution.deviation,
             "magic": strategy_config.execution.magic_number,
-            "comment": str(strategy_config.execution.comment_prefix),
+            "comment": comment,
             "type_filling": type_filling,
             "type_time": TimeInForce.SPECIFIED if is_pending_with_exp else TimeInForce.GTC,
         }
