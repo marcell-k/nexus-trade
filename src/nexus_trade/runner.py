@@ -6,7 +6,6 @@ import importlib
 import logging
 import os
 import sqlite3
-import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass
@@ -143,7 +142,6 @@ class StrategyRunner:
         self.pending_by_key: dict[tuple[str, int], list[int]] = {}
         self.pending_by_ticket: dict[int, int] = {}
         self.known_positions: set[int] = set()
-        self.position_state_lock: threading.Lock = threading.Lock()
 
         self.meta_model: XGBClassifierProtocol | None = None
         self.calibration_model: ProbabilityCalibrator | None = None
@@ -324,38 +322,35 @@ class StrategyRunner:
     def _refresh_tracked_position_snapshots(self, positions: list[PositionCacheEntry]) -> None:
         if not positions:
             return
-        with self.position_state_lock:
-            for pos in positions:
-                ticket = pos["ticket"]
-                trade_id = self.ticket_to_trade_id.get(ticket)
-                if trade_id is None:
-                    continue
-                metadata = self.entry_metadata.get(trade_id)
-                if metadata is None:
-                    continue
-                metadata["position_snapshot"] = pos
+        for pos in positions:
+            ticket = pos["ticket"]
+            trade_id = self.ticket_to_trade_id.get(ticket)
+            if trade_id is None:
+                continue
+            metadata = self.entry_metadata.get(trade_id)
+            if metadata is None:
+                continue
+            metadata["position_snapshot"] = pos
 
     def _patch_tracked_snapshot_levels(self, ticket: int, new_sl: float | None, new_tp: float | None) -> None:
         if new_sl is None and new_tp is None:
             return
-        with self.position_state_lock:
-            trade_id = self.ticket_to_trade_id.get(ticket)
-            if trade_id is None:
-                return
-            metadata = self.entry_metadata.get(trade_id)
-            if metadata is None:
-                return
-            snapshot = metadata.get("position_snapshot")
-            if snapshot is None:
-                return
-            if new_sl is not None:
-                snapshot["sl"] = new_sl
-            if new_tp is not None:
-                snapshot["tp"] = new_tp
+        trade_id = self.ticket_to_trade_id.get(ticket)
+        if trade_id is None:
+            return
+        metadata = self.entry_metadata.get(trade_id)
+        if metadata is None:
+            return
+        snapshot = metadata.get("position_snapshot")
+        if snapshot is None:
+            return
+        if new_sl is not None:
+            snapshot["sl"] = new_sl
+        if new_tp is not None:
+            snapshot["tp"] = new_tp
 
     def _has_pending_bracket_orders(self) -> bool:
-        with self.position_state_lock:
-            return any(isinstance(pending, BracketPendingTicket) for pending in self.pending_tickets.values())
+        return any(isinstance(pending, BracketPendingTicket) for pending in self.pending_tickets.values())
 
     def _seed_startup_position_tracking(
         self,
@@ -480,8 +475,7 @@ class StrategyRunner:
             return None
         if include_unknown:
             return positions
-        with self.position_state_lock:
-            known_snap = frozenset(self.known_positions)
+        known_snap = frozenset(self.known_positions)
         return [p for p in positions if p["ticket"] in known_snap]
 
     def _get_strategy_orders_direct(self) -> list[OrderSnapshot] | None:
@@ -561,22 +555,21 @@ class StrategyRunner:
             "entry_request": entry_request,
             "expected_entry_price": 0.0,
         }
-        with self.position_state_lock:
-            self.ticket_to_trade_id.update({buy_ticket: trade_id, sell_ticket: trade_id})
-            self.entry_metadata[trade_id] = metadata
-            self._register_pending_trade(
-                trade_id,
-                BracketPendingTicket(
-                    symbol=self.symbol,
-                    magic=self.magic_number,
-                    submission_time=submission_time,
-                    buy_order_ticket=buy_ticket,
-                    sell_order_ticket=sell_ticket,
-                    buy_stop=buy_stop,
-                    sell_stop=sell_stop,
-                    expected_volume=entry_request.volume,
-                ),
-            )
+        self.ticket_to_trade_id.update({buy_ticket: trade_id, sell_ticket: trade_id})
+        self.entry_metadata[trade_id] = metadata
+        self._register_pending_trade(
+            trade_id,
+            BracketPendingTicket(
+                symbol=self.symbol,
+                magic=self.magic_number,
+                submission_time=submission_time,
+                buy_order_ticket=buy_ticket,
+                sell_order_ticket=sell_ticket,
+                buy_stop=buy_stop,
+                sell_stop=sell_stop,
+                expected_volume=entry_request.volume,
+            ),
+        )
 
     def _store_entry_metadata_standard(
         self,
@@ -587,72 +580,69 @@ class StrategyRunner:
         expected_entry_price: float,
         opening_sl: float | None,
     ) -> None:
-        with self.position_state_lock:
-            self.entry_metadata[trade_id] = {
-                "submission_time": submission_time,
-                "volume_multiplier": volume_multiplier,
-                "ticket": ticket,
-                "expected_entry_price": expected_entry_price,
-                "opening_sl": opening_sl,
-                "position_snapshot": None,
-                "entry_request": None,
-            }
-            self.ticket_to_trade_id[ticket] = trade_id
-            self._register_pending_trade(
-                trade_id,
-                StandardPendingTicket(
-                    symbol=self.symbol,
-                    magic=self.magic_number,
-                    submission_time=submission_time,
-                    ticket=ticket,
-                ),
-            )
+        self.entry_metadata[trade_id] = {
+            "submission_time": submission_time,
+            "volume_multiplier": volume_multiplier,
+            "ticket": ticket,
+            "expected_entry_price": expected_entry_price,
+            "opening_sl": opening_sl,
+            "position_snapshot": None,
+            "entry_request": None,
+        }
+        self.ticket_to_trade_id[ticket] = trade_id
+        self._register_pending_trade(
+            trade_id,
+            StandardPendingTicket(
+                symbol=self.symbol,
+                magic=self.magic_number,
+                submission_time=submission_time,
+                ticket=ticket,
+            ),
+        )
 
     def _cleanup_pending(self, trade_id: int, composite_key: tuple[str, int]) -> None:
-        with self.position_state_lock:
-            pending_ticket = self.pending_tickets.pop(trade_id, None)
-            if isinstance(pending_ticket, StandardPendingTicket):
-                self.pending_by_ticket.pop(pending_ticket.ticket, None)
-            if composite_key in self.pending_by_key:
-                with suppress(ValueError):
-                    self.pending_by_key[composite_key].remove(trade_id)
-                if not self.pending_by_key[composite_key]:
-                    del self.pending_by_key[composite_key]
+        pending_ticket = self.pending_tickets.pop(trade_id, None)
+        if isinstance(pending_ticket, StandardPendingTicket):
+            self.pending_by_ticket.pop(pending_ticket.ticket, None)
+        if composite_key in self.pending_by_key:
+            with suppress(ValueError):
+                self.pending_by_key[composite_key].remove(trade_id)
+            if not self.pending_by_key[composite_key]:
+                del self.pending_by_key[composite_key]
 
     def _handle_closed_positions(self, closed_tickets: list[int]) -> None:
         close_logs: list[tuple[int, int, PositionCacheEntry, EntryMetadata]] = []
         closed_count = 0
 
-        with self.position_state_lock:
-            for ticket in closed_tickets:
-                trade_id = self.ticket_to_trade_id.pop(ticket, None)
-                if trade_id is not None:
-                    # Only evict metadata when no other tracked ticket still references this
-                    # trade_id; a shared id can survive if the dual-fill guard was bypassed.
-                    still_referenced = trade_id in self.ticket_to_trade_id.values()
-                    metadata = (
-                        self.entry_metadata.pop(trade_id, None)
-                        if not still_referenced
-                        else self.entry_metadata.get(trade_id)
-                    )
-                else:
-                    metadata = None
-                snapshot = metadata.get("position_snapshot") if metadata is not None else None
-                was_known = ticket in self.known_positions
-                self.known_positions.discard(ticket)
+        for ticket in closed_tickets:
+            trade_id = self.ticket_to_trade_id.pop(ticket, None)
+            if trade_id is not None:
+                # Only evict metadata when no other tracked ticket still references this
+                # trade_id; a shared id can survive if the dual-fill guard was bypassed.
+                still_referenced = trade_id in self.ticket_to_trade_id.values()
+                metadata = (
+                    self.entry_metadata.pop(trade_id, None)
+                    if not still_referenced
+                    else self.entry_metadata.get(trade_id)
+                )
+            else:
+                metadata = None
+            snapshot = metadata.get("position_snapshot") if metadata is not None else None
+            was_known = ticket in self.known_positions
+            self.known_positions.discard(ticket)
 
-                if trade_id is not None and metadata is not None and snapshot is not None:
-                    close_logs.append((trade_id, ticket, snapshot, metadata))
-                elif was_known or trade_id is not None:
-                    logger.warning(
-                        f"{self.strategy_name}:{self.symbol} | "
-                        f"EXTERNAL CLOSE t={ticket} | reason=missing_metadata_or_snapshot"
-                    )
+            if trade_id is not None and metadata is not None and snapshot is not None:
+                close_logs.append((trade_id, ticket, snapshot, metadata))
+            elif was_known or trade_id is not None:
+                logger.warning(
+                    f"{self.strategy_name}:{self.symbol} | "
+                    f"EXTERNAL CLOSE t={ticket} | reason=missing_metadata_or_snapshot"
+                )
 
-                if was_known:
-                    closed_count += 1
+            if was_known:
+                closed_count += 1
 
-            self.local_position_count = max(0, self.local_position_count - closed_count)
+        self.local_position_count = max(0, self.local_position_count - closed_count)
 
         for trade_id, ticket, snapshot, metadata in close_logs:
             close_data = self._build_close_data(
@@ -685,22 +675,19 @@ class StrategyRunner:
 
     def _handle_new_fill(self, pos: Position) -> None:
         ticket = pos.ticket
-        with self.position_state_lock:
-            trade_id = self.ticket_to_trade_id.get(ticket)
-            # Dual-fill guard: bracket entries with both legs downgraded to market orders
-            # map both position tickets to the same trade_id in _store_entry_metadata_bracket.
-            # The second leg must be decoupled into its own trade_id to prevent a UNIQUE
-            # constraint on (trade_id, partial_sequence=0) and snapshot ticket corruption.
-            if trade_id is not None:
-                _prior = self.entry_metadata.get(trade_id)
-                if _prior is not None and _prior.get("position_snapshot") is not None:
-                    logger.warning(
-                        f"{self.strategy_name:<9}: DualFill t={ticket} | id={trade_id} | action=split_trade_id"
-                    )
-                    trade_id = None
-            needs_resolution = (
-                trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
-            )
+        trade_id = self.ticket_to_trade_id.get(ticket)
+        # Dual-fill guard: bracket entries with both legs downgraded to market orders
+        # map both position tickets to the same trade_id in _store_entry_metadata_bracket.
+        # The second leg must be decoupled into its own trade_id to prevent a UNIQUE
+        # constraint on (trade_id, partial_sequence=0) and snapshot ticket corruption.
+        if trade_id is not None:
+            _prior = self.entry_metadata.get(trade_id)
+            if _prior is not None and _prior.get("position_snapshot") is not None:
+                logger.warning(f"{self.strategy_name:<9}: DualFill t={ticket} | id={trade_id} | action=split_trade_id")
+                trade_id = None
+        needs_resolution = (
+            trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
+        )
         if trade_id is None:
             trade_id = self._resolve_pending_ticket(pos)
         elif needs_resolution:
@@ -719,9 +706,8 @@ class StrategyRunner:
             logger.error(f"{self.strategy_name:<9}: FillMetaMissing id={trade_id} | action=skip")
             return
 
-        with self.position_state_lock:
-            self.local_position_count += 1
-            self.known_positions.add(ticket)
+        self.local_position_count += 1
+        self.known_positions.add(ticket)
 
         new_trades = self.atomic_increment_trade()
 
@@ -754,17 +740,16 @@ class StrategyRunner:
     def _handle_orphaned_fill(self, ticket: int, pos: Position) -> int | None:
         logger.debug(f"{self.strategy_name:<9}: OrphanFill t={ticket} | action=generate_fallback_id")
         trade_id = self._generate_trade_id()
-        with self.position_state_lock:
-            self.entry_metadata[trade_id] = {
-                "submission_time": time.time(),
-                "volume_multiplier": None,
-                "ticket": ticket,
-                "opening_sl": pos.sl,
-                "position_snapshot": None,
-                "expected_entry_price": pos.price_open,
-                "entry_request": None,
-            }
-            self.ticket_to_trade_id[ticket] = trade_id
+        self.entry_metadata[trade_id] = {
+            "submission_time": time.time(),
+            "volume_multiplier": None,
+            "ticket": ticket,
+            "opening_sl": pos.sl,
+            "position_snapshot": None,
+            "expected_entry_price": pos.price_open,
+            "entry_request": None,
+        }
+        self.ticket_to_trade_id[ticket] = trade_id
         return trade_id
 
     def _matches_bracket_conditions(self, pos: Position, conditions: BracketPendingTicket) -> bool:
@@ -776,11 +761,10 @@ class StrategyRunner:
 
     def _resolve_pending_ticket(self, pos: Position) -> int | None:
         ticket = pos.ticket
-        with self.position_state_lock:
-            composite_key = self._get_composite_key()
-            direct_match = self.pending_by_ticket.get(ticket)
-            candidate_ids = tuple(self.pending_by_key.get(composite_key, ()))
-            pending_snapshot = {tid: self.pending_tickets.get(tid) for tid in candidate_ids}
+        composite_key = self._get_composite_key()
+        direct_match = self.pending_by_ticket.get(ticket)
+        candidate_ids = tuple(self.pending_by_key.get(composite_key, ()))
+        pending_snapshot = {tid: self.pending_tickets.get(tid) for tid in candidate_ids}
 
         if direct_match is not None:
             self._cleanup_pending(direct_match, composite_key)
@@ -807,12 +791,11 @@ class StrategyRunner:
     ) -> int:
         ticket = pos.ticket
         is_buy = pos.type == PositionType.BUY
-        with self.position_state_lock:
-            self.ticket_to_trade_id[ticket] = pending_trade_id
-            metadata = self.entry_metadata[pending_trade_id]
-            metadata["ticket"] = ticket
-            metadata["expected_entry_price"] = conditions.buy_stop if is_buy else conditions.sell_stop
-            metadata["opening_sl"] = pos.sl if pos.sl else None
+        self.ticket_to_trade_id[ticket] = pending_trade_id
+        metadata = self.entry_metadata[pending_trade_id]
+        metadata["ticket"] = ticket
+        metadata["expected_entry_price"] = conditions.buy_stop if is_buy else conditions.sell_stop
+        metadata["opening_sl"] = pos.sl if pos.sl else None
 
         opposite_ticket = conditions.sell_order_ticket if is_buy else conditions.buy_order_ticket
         if opposite_ticket and self.executor.cancel_order(opposite_ticket):
@@ -828,12 +811,9 @@ class StrategyRunner:
     def _check_expired_bracket_orders(
         self, current_tickets: set[int], orders: list[OrderSnapshot] | None = None
     ) -> None:
-        with self.position_state_lock:
-            bracket_pending: dict[int, BracketPendingTicket] = {
-                tid: pending
-                for tid, pending in self.pending_tickets.items()
-                if isinstance(pending, BracketPendingTicket)
-            }
+        bracket_pending: dict[int, BracketPendingTicket] = {
+            tid: pending for tid, pending in self.pending_tickets.items() if isinstance(pending, BracketPendingTicket)
+        }
         if not bracket_pending:
             return
 
@@ -850,8 +830,7 @@ class StrategyRunner:
             if (buy_ticket and buy_ticket in current_tickets) or (sell_ticket and sell_ticket in current_tickets):
                 continue
 
-            with self.position_state_lock:
-                already_resolved = trade_id in self.ticket_to_trade_id.values()
+            already_resolved = trade_id in self.ticket_to_trade_id.values()
             if already_resolved:
                 continue
 
@@ -1044,8 +1023,7 @@ class StrategyRunner:
 
         positions: list[PositionCacheEntry]
         if preloaded_positions is not None:
-            with self.position_state_lock:
-                known = frozenset(self.known_positions)
+            known = frozenset(self.known_positions)
             positions = [p for p in preloaded_positions if p["ticket"] in known]
         else:
             loaded = self._load_strategy_positions(mode="cache", include_unknown=False)
@@ -1196,12 +1174,11 @@ class StrategyRunner:
             )
             self.trade_logger.log_close(close_data)
 
-        with self.position_state_lock:
-            self.known_positions.discard(ticket)
-            self.local_position_count = max(0, self.local_position_count - 1)
-            self.ticket_to_trade_id.pop(ticket, None)
-            if trade_id is not None:
-                self.entry_metadata.pop(trade_id, None)
+        self.known_positions.discard(ticket)
+        self.local_position_count = max(0, self.local_position_count - 1)
+        self.ticket_to_trade_id.pop(ticket, None)
+        if trade_id is not None:
+            self.entry_metadata.pop(trade_id, None)
 
         self._invalidate_cache_for_ticket(ticket)
         max_pos = self.global_risk_policy["max_total_positions"]
@@ -1298,8 +1275,7 @@ class StrategyRunner:
 
         mt5_orders = self._get_strategy_orders_direct() if self._has_pending_bracket_orders() else None
 
-        with self.position_state_lock:
-            known_snapshot = set(self.known_positions)
+        known_snapshot = set(self.known_positions)
 
         closed_tickets = [t for t in known_snapshot if t not in current_tickets]
         if closed_tickets:
