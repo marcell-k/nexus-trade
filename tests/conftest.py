@@ -144,8 +144,8 @@ _install_mt5_stub()
 
 
 _PATCH_TARGETS: tuple[str, ...] = (
-    "nexus_trade.core.data_handler.mt5",
-    "nexus_trade.core.connection.mt5",
+    "nexus_trade.core.data_handler.mt",
+    "nexus_trade.core.connection.mt",
     "nexus_trade.core.repository.mt",
     "nexus_trade.core.symbol.mt",
     "nexus_trade.core.constants.mt",

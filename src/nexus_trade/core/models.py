@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from pydantic import ConfigDict
 from pydantic.dataclasses import dataclass
 
+from nexus_trade.core.constants import MT5_RETCODE_DONE
 from nexus_trade.core.types import (
     OrderSnapshot,
     PartialClosePositionSnapshot,
@@ -13,7 +14,6 @@ from nexus_trade.core.types import (
 )
 
 if TYPE_CHECKING:
-    from nexus_trade.core.constants import OrderType
     from nexus_trade.core.types import MT5Tick
 
 _CFG = ConfigDict(frozen=True, strict=True, extra="forbid")
@@ -78,21 +78,6 @@ class Position:
         )
 
 
-@dataclass(slots=True, config=_CFG)
-class Order:
-    """Pending Order."""
-
-    ticket: int
-    symbol: str
-    type: OrderType
-    magic: int
-    volume_initial: float
-    volume_current: float
-    price_open: float
-    sl: float | None
-    tp: float | None
-
-
 @dataclass(slots=True, frozen=True)
 class _PendingBase:
     symbol: str
@@ -147,19 +132,11 @@ class Tick:
         return (self.bid + self.ask) / 2
 
 
-_RETCODE_DONE: int = 10009
-
-
 def order_succeeded(result: object | None) -> bool:
     """Return True if order_send() result has retcode TRADE_RETCODE_DONE."""
     if result is None:
         return False
-    return int(getattr(result, "retcode", -1)) == _RETCODE_DONE
-
-
-def order_ticket(result: object) -> int:
-    """Return the order ticket from an order_send() result."""
-    return int(getattr(result, "order", 0))
+    return int(getattr(result, "retcode", -1)) == MT5_RETCODE_DONE
 
 
 def cache_entry_to_position(entry: PositionCacheEntry) -> Position:

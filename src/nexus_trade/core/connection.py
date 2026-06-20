@@ -2,7 +2,7 @@ import logging
 import time
 from enum import Enum
 
-import MetaTrader5 as mt5
+import MetaTrader5 as mt
 from MetaTrader5 import AccountInfo
 
 # Assuming this exists in your project
@@ -35,7 +35,7 @@ class MT5Connection:
 
         for attempt in range(max_retries):
             if attempt > 0:
-                mt5.shutdown()
+                mt.shutdown()
                 # Exponential backoff based on the attempt number
                 backoff = SYSTEM_TIMINGS.connect_backoff_seconds[
                     min(attempt - 1, len(SYSTEM_TIMINGS.connect_backoff_seconds) - 1)
@@ -43,16 +43,16 @@ class MT5Connection:
                 logger.warning(f"Reconnecting... attempt={attempt}/{max_retries} | backoff={backoff}s")
                 time.sleep(backoff)
 
-            if not mt5.initialize(
+            if not mt.initialize(
                 login=self.config.login,
                 password=self.config.password,
                 server=self.config.server,
                 path=self.config.path,
             ):
-                logger.warning(f"ConnInitFail n={attempt + 1}/{max_retries} | err={mt5.last_error()}")
+                logger.warning(f"ConnInitFail n={attempt + 1}/{max_retries} | err={mt.last_error()}")
                 continue
 
-            account_info = mt5.account_info()
+            account_info = mt.account_info()
             if not self._validate_account(account_info):
                 continue
 
@@ -67,7 +67,7 @@ class MT5Connection:
     def disconnect(self) -> None:
         """Graceful disconnection."""
         try:
-            mt5.shutdown()
+            mt.shutdown()
             logger.debug("ConnClosed")
         except OSError as e:
             logger.error(f"ConnCloseErr err={e}", exc_info=True)
@@ -79,12 +79,12 @@ class MT5Connection:
         if use_cache and self._is_cache_valid():
             return bool(self._cached_connection_state)
 
-        terminal_info = mt5.terminal_info()
+        terminal_info = mt.terminal_info()
         if terminal_info is None or not terminal_info.connected:
             self._set_disconnected()
             return False
 
-        account_info = mt5.account_info()
+        account_info = mt.account_info()
         if not self._validate_account(account_info):
             self._set_disconnected()
             return False

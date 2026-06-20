@@ -15,6 +15,7 @@ import pandas as pd
 
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.constants import (
+    MT5_RETCODE_DONE,
     OrderFilling,
     OrderType,
     TimeInForce,
@@ -86,7 +87,6 @@ class OrderExecutor:
 
         self.max_retries: int = 3
         self.retryable_codes: frozenset[int] = frozenset({10006, 10007, 10010, 10018, 10019})
-        self._retcode_done: int = 10009
         _no_changes = getattr(mt, "TRADE_RETCODE_NO_CHANGES", None)
         self._retcode_no_changes: int = int(_no_changes) if isinstance(_no_changes, int) and _no_changes > 0 else 10025
 
@@ -175,7 +175,7 @@ class OrderExecutor:
         }
 
         result = self._order_send_with_retry(mt5_request)
-        if result is None or result.retcode != self._retcode_done:
+        if result is None or result.retcode != MT5_RETCODE_DONE:
             error_msg = result.comment if result is not None else "MT5 returned None"
             return self._fail_entry(symbol, error_msg)
         logger.info(
@@ -652,13 +652,13 @@ class OrderExecutor:
                 "sl": final_sl,
                 "tp": final_tp,
             },
-            success_codes={self._retcode_done, self._retcode_no_changes},
+            success_codes={MT5_RETCODE_DONE, self._retcode_no_changes},
         )
         if result is None:
             logger.error(f"ModFail t={ticket} | reason=no_response")
             return False
         rc = result.retcode
-        if rc not in {self._retcode_done, self._retcode_no_changes}:
+        if rc not in {MT5_RETCODE_DONE, self._retcode_no_changes}:
             logger.error(f"ModFail t={ticket} | err={result.comment}")
             return False
         if rc == self._retcode_no_changes:
@@ -669,7 +669,7 @@ class OrderExecutor:
 
     def cancel_order(self, ticket: int) -> bool:
         result = self._order_send_with_retry({"action": TradeAction.REMOVE, "order": ticket})
-        success = bool(result and result.retcode == self._retcode_done)
+        success = bool(result and result.retcode == MT5_RETCODE_DONE)
         if not success:
             rc = result.retcode if result is not None else None
             comment = result.comment if result is not None else "no_result"
@@ -840,7 +840,7 @@ class OrderExecutor:
     ) -> OrderSendResult | None:
         """Exponential-backoff retry wrapper around mt.order_send."""
         symbol: str = str(mt5_request.get("symbol", ""))
-        codes = success_codes if success_codes is not None else {self._retcode_done}
+        codes = success_codes if success_codes is not None else {MT5_RETCODE_DONE}
         result: OrderSendResult | None = None
 
         for attempt in range(self.max_retries):
@@ -870,7 +870,7 @@ class OrderExecutor:
     def _validate_order_result(self, result: OrderSendResult | None) -> tuple[bool, str]:
         if result is None:
             return False, "MT5 returned None"
-        if result.retcode != self._retcode_done:
+        if result.retcode != MT5_RETCODE_DONE:
             return False, result.comment
         return True, ""
 

@@ -210,10 +210,6 @@ bool ExportCalendarData()
             break;
       }
 
-      // Explicitly wrap the event name in double quotes
-      // to prevent delimiter collision
-      string event_name_safe = "\"" + event.name + "\"";
-
       string line =
          event_date + "," +
          event_time + "," +

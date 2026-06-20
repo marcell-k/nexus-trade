@@ -159,8 +159,6 @@ class StrategyRunner:
         self._symbol_tick_cache: dict[str, MT5Tick] = {}
         self._cleanup_done: bool = False
 
-        self.exit_log_data_cls: type[ExitLogData] = ExitLogData
-
         logger.info(
             f"Init strat={self.strategy_name:<9} | tf={self.timeframe:<3} | "
             f"sym={self.symbol:<7} | m={self.magic_number:>3}"
@@ -1266,7 +1264,7 @@ class StrategyRunner:
             logger.error(f"{self.strategy_name:<9}: ExitFail t={ticket} | err={result.error_message}")
             return
 
-        exit_log_data = self.exit_log_data_cls(
+        exit_log_data = ExitLogData(
             ticket=ticket,
             expected_exit_price=expected_exit_price,
             exit_trigger=getattr(exit_request, "exit_reason", exit_context),

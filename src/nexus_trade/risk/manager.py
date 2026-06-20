@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as dt_time
@@ -69,8 +68,6 @@ class RiskManager:
         self.data_handler: DataHandler = data_handler
         self.broker_tz: ZoneInfo = broker_tz
         self.strategy_runner: StrategyRunnerProtocol | None = strategy_runner
-
-        self._drawdown_refresh_lock: threading.Lock = threading.Lock()
 
         self.news_filter: NewsFilter | None = self._create_news_filter()
         self.cost_calculator: MarketCostCalculator = MarketCostCalculator(

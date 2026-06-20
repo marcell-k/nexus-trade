@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import pickle
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, Protocol, cast
@@ -23,6 +24,9 @@ except ImportError as _ml_import_err:
     raise ImportError(
         "calibrator.py requires optional ML deps: pip install joblib scipy scikit-learn"
     ) from _ml_import_err
+
+
+logger = logging.getLogger(__name__)
 
 
 class _SklearnClassifier(Protocol):
@@ -190,17 +194,17 @@ class ProbabilityCalibrator:
                 raise ValueError("y_dev and p_dev must have same length")
 
         # Stage 1: Fit base calibrators on train data
-        print(f"\nFitting {self.method} calibrator...")
-        print(f"Stage 1: Training {len(self.base_methods)} base calibrators on train data ({len(y_cal)} samples)")
+        logger.info(f"CalibFit method={self.method}")
+        logger.info(f"CalibFitStage1 n_base={len(self.base_methods)} | n_cal={len(y_cal)}")
 
         for base_method in self.base_methods:
             try:
                 calibrator = ProbabilityCalibrator(method=base_method)
                 calibrator.fit(y_cal, p_cal)
                 self.base_calibrators[base_method] = calibrator
-                print(f"  ✓ {base_method} fitted")
+                logger.debug(f"CalibBaseFitOK method={base_method}")
             except Exception as e:
-                print(f"  ✗ {base_method} failed: {e}")
+                logger.warning(f"CalibBaseFitFail method={base_method} | err={e}")
 
         if not self.base_calibrators:
             raise ValueError("All base calibrators failed to fit")
@@ -209,7 +213,7 @@ class ProbabilityCalibrator:
         if self.method == "stacking":
             assert y_dev is not None
             assert p_dev is not None
-            print(f"\nStage 2: Training meta-model on dev data ({len(y_dev)} samples)")
+            logger.info(f"CalibFitStage2 n_dev={len(y_dev)}")
 
             # Generate meta-features: logit-transformed probabilities from each calibrator
             # Feature matrix shape: (n_dev, K+1) where K = num base calibrators
@@ -221,7 +225,7 @@ class ProbabilityCalibrator:
                     p_cal_dev = calibrator.transform(p_dev)
                     meta_features_dev.append(self._logit(p_cal_dev))
                 except Exception as e:
-                    print(f"  Warning: {base_method} transform failed on dev: {e}")
+                    logger.warning(f"CalibTransformFail method={base_method} | stage=dev | err={e}")
 
             X_meta_dev = np.column_stack(meta_features_dev)
 
@@ -233,12 +237,10 @@ class ProbabilityCalibrator:
 
             # Print learned weights (diagnostic)
             feature_names = ["original", *list(self.base_calibrators.keys())]
-            print("\nLearned meta-model weights:")
-            for name, weight in zip(feature_names, _meta.coef_[0], strict=True):
-                print(f"  {name:<12}: {weight:+.4f}")
-            print(f"  Intercept: {_meta.intercept_[0]:+.4f}")
+            weight_str = ", ".join(f"{n}={w:+.4f}" for n, w in zip(feature_names, _meta.coef_[0], strict=True))
+            logger.debug(f"CalibMetaWeights {weight_str} | intercept={_meta.intercept_[0]:+.4f}")
 
-        print(f"✓ {self.method.capitalize()} calibrator fitted successfully")
+        logger.info(f"CalibFitOK method={self.method}")
         self._fitted = True
         return self
 
@@ -289,7 +291,7 @@ class ProbabilityCalibrator:
                 p_cal = calibrator.transform(p)
                 calibrated_predictions.append(p_cal)
             except Exception as e:
-                print(f"Warning: {base_method} transform failed: {e}")
+                logger.warning(f"CalibTransformFail method={base_method} | err={e}")
 
         if not calibrated_predictions:
             raise RuntimeError("All base calibrators failed during transform")
@@ -314,7 +316,7 @@ class ProbabilityCalibrator:
                 p_cal = calibrator.transform(p)
                 meta_features.append(self._logit(p_cal))
             except Exception as e:
-                print(f"Warning: {base_method} transform failed: {e}")
+                logger.warning(f"CalibTransformFail method={base_method} | stage=stacking | err={e}")
                 # Fallback: use original probability to maintain feature dimensionality
                 meta_features.append(self._logit(p))
 
@@ -417,7 +419,7 @@ class ProbabilityCalibrator:
                 )
 
             except Exception as e:
-                print(f"Warning: {method} calibration failed: {e}")
+                logger.warning(f"CalibSelectFail method={method} | err={e}")
 
         # Sort by validation Brier score (index 3)
         best_method = min(all_scores, key=lambda x: x[3])[0]
@@ -427,21 +429,19 @@ class ProbabilityCalibrator:
     @staticmethod
     def print_calibration_scores(scores: list[tuple[str, ...]]) -> None:
         """Print calibration scores in table format."""
-        print("=" * 95)
-        print("Calibration Scores (Proper Train/Dev/Test Validation)")
-        print("-" * 95)
-        print(
+        header = (
             f"{'Method':<12} {'Train Brier':>12} {'Train LogLoss':>14} {'Dev Brier':>12}"
             f"{'Dev LogLoss':>14} {'Test Brier':>12} {'Test LogLoss':>14}"
         )
-        print("-" * 95)
+        lines = ["=" * 95, "Calibration Scores (Proper Train/Dev/Test Validation)", "-" * 95, header, "-" * 95]
         for row in scores:
             method, bs_train, ll_train, bs_dev, ll_dev, bs_test, ll_test = row
-            print(
+            lines.append(
                 f"{method:<12} {bs_train:>12.6f} {ll_train:>14.6f} {bs_dev:>12.6f} "
                 f"{ll_dev:>14.6f} {bs_test:>12.6f} {ll_test:>14.6f}"
             )
-        print("=" * 95)
+        lines.append("=" * 95)
+        logger.info("\n".join(lines))
 
     @classmethod
     def integrate_calibrated_probs(
@@ -457,7 +457,7 @@ class ProbabilityCalibrator:
         prob_train, prob_dev, prob_test = cls._compute_split_probs(X_train, X_dev, X_test, final_model)
 
         if method.lower() == "original":
-            print("Using original (uncalibrated) probabilities - no calibration applied")
+            logger.info("CalibIntegrate method=original | action=skip")
             return prob_train, prob_dev, prob_test
         else:
             # Fit calibrator
@@ -467,12 +467,10 @@ class ProbabilityCalibrator:
             y_train_arr = np.asarray(y_train, dtype=int).reshape(-1)
 
             if method.lower() == "stacking":
-                # Stacking requires dev labels for meta-model training
-                # Here we assume dev data is available (caller must ensure this)
-                print("Warning: integrate_calibrated_probs() for stacking requires y_dev.")
-                print("Fitting stacking with train data only (meta-model will use train as pseudo-dev).")
-                print("For proper stacking, use select_best_calibration() or full_calibration_workflow().")
-                # Fallback: fit on train only (meta-model won't be properly trained)
+                logger.warning(
+                    "CalibIntegrate method=stacking | y_dev=missing | action=train_only | "
+                    "prefer=select_best_calibration or full_calibration_workflow"
+                )
                 calibrator.fit(y_train_arr, prob_train)
             else:
                 calibrator.fit(y_train_arr, prob_train)
@@ -482,8 +480,7 @@ class ProbabilityCalibrator:
             cal_probs_dev = calibrator.transform(prob_dev)
             cal_probs_test = calibrator.transform(prob_test)
 
-            print(f"Applied {method} calibration to probability arrays")
-
+            logger.info(f"CalibIntegrate method={method} | ok=1")
             return cal_probs_train, cal_probs_dev, cal_probs_test
 
     @classmethod
@@ -511,11 +508,11 @@ class ProbabilityCalibrator:
             X_train, y_train, X_dev, y_dev, X_test, y_test, final_model, methods
         )
 
-        print(f"Best calibration method (by validation Brier score): {best_method}")
+        logger.info(f"CalibSelect best={best_method}")
         cls.print_calibration_scores(calibration_scores)
 
         # Apply best calibration method to generate probabilities
-        print(f"\nApplying {best_method} calibration")
+        logger.info(f"CalibApply method={best_method}")
 
         p_train, p_dev, p_test = cls._compute_split_probs(X_train, X_dev, X_test, final_model)
 
@@ -550,7 +547,7 @@ class ProbabilityCalibrator:
         prob_train, prob_dev, prob_test = cls._compute_split_probs(X_train, X_dev, X_test, final_model)
 
         if method.lower() == "original":
-            print("Using original (uncalibrated) probabilities")
+            logger.info("CalibApply method=original | action=skip")
             return prob_train, prob_dev, prob_test
         else:
             # Apply specified calibration method
@@ -570,8 +567,7 @@ class ProbabilityCalibrator:
             cal_probs_dev = calibrator.transform(prob_dev)
             cal_probs_test = calibrator.transform(prob_test)
 
-            print(f"Applied {method} calibration to all probability arrays")
-
+            logger.info(f"CalibApply method={method} | ok=1")
             return cal_probs_train, cal_probs_dev, cal_probs_test
 
     @classmethod
@@ -584,9 +580,7 @@ class ProbabilityCalibrator:
         save_path: str | None = None,
     ) -> ProbabilityCalibrator:
         """Fit production calibrator on 100% of data. Stacking uses 70/30 temporal split."""
-        print(f"\n{'=' * 60}\nFITTING PRODUCTION CALIBRATOR (100% DATA)\n{'=' * 60}")
-        print(f"Method: {method}")
-        print(f"Total samples: {len(X_full)}")
+        logger.info(f"CalibProdFit method={method} | n={len(X_full)}")
 
         # Standardize labels
         y_full = np.asarray(y_full, dtype=int).reshape(-1)
@@ -595,19 +589,15 @@ class ProbabilityCalibrator:
             raise ValueError(f"y_full length ({len(y_full)}) must match X_full rows ({len(X_full)})")
 
         # Get uncalibrated probabilities from production model on full data
-        print("Computing uncalibrated probabilities from production model...")
         p_full_uncalibrated = cls.calculate_prob_array(X_full, production_model)
 
         # Compute baseline metrics
         bs_uncalibrated, ll_uncalibrated = cls._score(y_full, p_full_uncalibrated)
 
-        print("\nBaseline (uncalibrated) metrics:")
-        print(f"  Brier Score: {bs_uncalibrated:.6f}")
-        print(f"  Log Loss: {ll_uncalibrated:.6f}")
+        logger.info(f"CalibProdBase brier={bs_uncalibrated:.6f} | log_loss={ll_uncalibrated:.6f}")
 
         # Special handling for stacking: needs train/dev split
         if method.lower() == "stacking":
-            print("\n⚠ Stacking requires train/dev split for meta-model training")
             split_idx = int(len(y_full) * 0.7)
 
             y_train_prod = y_full[:split_idx]
@@ -615,14 +605,11 @@ class ProbabilityCalibrator:
             y_dev_prod = y_full[split_idx:]
             p_dev_prod = p_full_uncalibrated[split_idx:]
 
-            print(f"  Train split: {len(y_train_prod)} samples ({len(y_train_prod) / len(y_full) * 100:.1f}%)")
-            print(f"  Dev split: {len(y_dev_prod)} samples ({len(y_dev_prod) / len(y_full) * 100:.1f}%)")
-
             calibrator = cls(method=method)
             calibrator.fit(y_train_prod, p_train_prod, y_dev_prod, p_dev_prod)
         else:
             # Ensemble and base methods: use 100% of data
-            print(f"\nFitting {method} calibrator on 100% of data...")
+            logger.info(f"CalibProdFit method={method} | scope=full")
             calibrator = cls(method=method)
             calibrator.fit(y_full, p_full_uncalibrated)
 
@@ -630,29 +617,18 @@ class ProbabilityCalibrator:
         p_full_calibrated = calibrator.transform(p_full_uncalibrated)
         bs_calibrated, ll_calibrated = cls._score(y_full, p_full_calibrated)
 
-        print("\nCalibrated metrics (training set, for reference only):")
-        print(f"  Brier Score: {bs_calibrated:.6f}")
-        print(f"  Log Loss: {ll_calibrated:.6f}")
-        print(f"  Brier improvement: {(bs_uncalibrated - bs_calibrated) / bs_uncalibrated * 100:.2f}%")
-
+        improvement = (bs_uncalibrated - bs_calibrated) / bs_uncalibrated * 100
+        logger.info(
+            f"CalibProdMetrics brier={bs_calibrated:.6f} | log_loss={ll_calibrated:.6f} | "
+            f"brier_improvement={improvement:.2f}%"
+        )
         # Save calibrator if path provided
         if save_path:
             with Path(save_path).open("wb") as f:
                 pickle.dump(calibrator, f)
-            print(f"\n✓ Production calibrator saved to {save_path}")
+            logger.info(f"CalibProdSave path={save_path}")
 
-        print(f"\n{'=' * 60}")
-        print("PRODUCTION CALIBRATOR SUMMARY")
-        print(f"{'=' * 60}")
-        print(f"Method: {method}")
-        print(f"Training samples: {len(y_full):,}")
-        print(f"Class distribution: {np.mean(y_full):.2%} positive rate")
-        print("\n  PRODUCTION USAGE:")
-        print("  1. Load calibrator: pickle.load('calibrator.pkl')")
-        print("  2. Get model proba: p = model.predict_proba(X_new)[:, 1]")
-        print("  3. Calibrate: p_cal = calibrator.transform(p)")
-        print("  4. Decision: signal = int(p_cal >= threshold)")
-        print(f"{'=' * 60}\n")
+        logger.info(f"CalibProdSummary method={method} | n={len(y_full):,} | pos_rate={np.mean(y_full):.2%}")
 
         return calibrator
 
@@ -672,55 +648,51 @@ class ProbabilityCalibrator:
         if self.method in {"ensemble", "stacking"}:
             # Save each base calibrator
             for name, base_cal in self.base_calibrators.items():
-                print(f"Saving {name} calibrator...")
+                logger.debug(f"CalibSave name={name}")
 
                 if base_cal.model is not None and base_cal.method != "temperature":
                     model_path = Path(output_dir) / f"{name}_model.joblib"
                     joblib.dump(base_cal.model, model_path)
-                    print(f"  ✓ Saved sklearn model: {model_path}")
+                    logger.debug(f"CalibSaveModel path={model_path}")
 
                 if hasattr(base_cal, "T") and base_cal.T is not None:
                     state["fitted_models"][name] = {"T": float(base_cal.T)}
-                    print(f"  ✓ Saved temperature: {base_cal.T:.4f}")
+                    logger.debug(f"CalibSaveTemp name={name} | T={base_cal.T:.4f}")
 
             # Save stacking meta-model
             if self.method == "stacking" and self.meta_model is not None:
                 meta_path = Path(output_dir) / "stacking_meta_model.joblib"
                 joblib.dump(self.meta_model, meta_path)
-                print(f"✓ Saved stacking meta-model: {meta_path}")
+                logger.debug(f"CalibSaveMetaModel path={meta_path}")
 
         else:
             # Save single base method model
             if self.model is not None and self.method != "temperature":
                 model_path = Path(output_dir) / f"{self.method}_model.joblib"
                 joblib.dump(self.model, model_path)
-                print(f"✓ Saved {self.method} model: {model_path}")
+                logger.debug(f"CalibSaveModel method={self.method} | path={model_path}")
 
             if hasattr(self, "T") and self.T is not None:
                 state["T"] = float(self.T)
-                print(f"✓ Saved temperature: {self.T:.4f}")
+                logger.debug(f"CalibSaveTemp T={self.T:.4f}")
 
         # Save state JSON
         state_path = Path(output_dir) / "calibrator_state.json"
         state_path.write_text(json.dumps(state, indent=2))
 
-        print(f"\n✓ Calibrator state saved to {output_dir}/")
-        print(
-            f"  Files: calibrator_state.json + {len(self.base_calibrators) if self.method in {'ensemble', 'stacking'} else 1} model file(s)"  # noqa: E501
-        )
+        n_files = len(self.base_calibrators) if self.method in {"ensemble", "stacking"} else 1
+        logger.info(f"CalibSaveDone dir={output_dir} | json=1 | models={n_files}")
 
     @classmethod
     def load_state(cls, input_dir: str = "models") -> ProbabilityCalibrator:
         """Load calibrator from state directory (JSON config + joblib models)."""
         # Load state
         state_path = Path(input_dir) / "calibrator_state.json"
-        if not Path.exists(state_path):
+        if Path(state_path).exists():
             raise FileNotFoundError(f"Calibrator state not found: {state_path}")
 
         with Path.open(state_path) as f:
             state = json.load(f)
-
-        # print(f"Loading {state['method']} calibrator from {input_dir}/")
 
         # Reconstruct calibrator
         calibrator = cls(
@@ -763,5 +735,4 @@ class ProbabilityCalibrator:
                 calibrator.T = state["T"]
                 calibrator.model = "temperature"
 
-        # print(f"✓ Calibrator loaded successfully\n")
         return calibrator

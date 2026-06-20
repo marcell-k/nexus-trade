@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-import MetaTrader5 as mt5
+import MetaTrader5 as mt
 import numpy as np
 import pandas as pd
 
@@ -253,7 +253,7 @@ class DataHandler:
         # Small headroom window: enough to absorb a few missed/delayed polls without
         # paying for a full `capacity`-sized fetch every time.
         lookback = 5
-        rates = mt5.copy_rates_from_pos(symbol, timeframe_mt5, 0, lookback)
+        rates = mt.copy_rates_from_pos(symbol, timeframe_mt5, 0, lookback)
         if rates is None or len(rates) == 0:
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
@@ -298,7 +298,7 @@ class DataHandler:
         strategy_tz: ZoneInfo,
         strategy_config: StrategyConfig[BaseStrategyParams],
     ) -> pd.DataFrame | None:
-        rates = mt5.copy_rates_from_pos(symbol, timeframe_mt5, 0, capacity)
+        rates = mt.copy_rates_from_pos(symbol, timeframe_mt5, 0, capacity)
         if rates is None or len(rates) == 0:
             return None
 
@@ -317,7 +317,7 @@ class DataHandler:
         return self._ring_to_output(ring, strategy_tz, strategy_config)
 
     def get_current_tick(self, symbol: str) -> Tick | None:
-        tick = mt5.symbol_info_tick(symbol)
+        tick = mt.symbol_info_tick(symbol)
         if tick is None:
             return None
         return Tick.from_mt5(tick)
