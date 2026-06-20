@@ -769,13 +769,12 @@ class StrategyRunner:
             self.ticket_to_trade_id[ticket] = trade_id
         return trade_id
 
-    def _matches_bracket_conditions(
-        self, pos: Position, conditions: BracketPendingTicket, submission_time: float
-    ) -> bool:
-        expected_volume = conditions.expected_volume
-        volume_match = abs(pos.volume - expected_volume) / expected_volume < 0.01
-        timing_match = time.time() - submission_time < 10.0
-        return volume_match and timing_match
+    def _matches_bracket_conditions(self, pos: Position, conditions: BracketPendingTicket) -> bool:
+        deals = mt.history_deals_get(position=pos.ticket)
+        if not deals:
+            return False
+        triggering_order = int(deals[-1].order)
+        return triggering_order in (conditions.buy_order_ticket, conditions.sell_order_ticket)
 
     def _resolve_pending_ticket(self, pos: Position) -> int | None:
         ticket = pos.ticket
@@ -797,9 +796,7 @@ class StrategyRunner:
             conditions = pending_snapshot.get(pending_trade_id)
             if conditions is None or conditions.symbol != pos.symbol or conditions.magic != pos.magic:
                 continue
-            if isinstance(conditions, BracketPendingTicket) and self._matches_bracket_conditions(
-                pos, conditions, conditions.submission_time
-            ):
+            if isinstance(conditions, BracketPendingTicket) and self._matches_bracket_conditions(pos, conditions):
                 return self._finalize_bracket_resolution(pending_trade_id, pos, conditions, composite_key)
         return None
 
