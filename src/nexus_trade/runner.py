@@ -23,7 +23,6 @@ from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.core.models import (
     BracketPendingTicket,
     ExitLogData,
-    PartialClosePositionSnapshot,
     PendingTicket,
     Position,
     StandardPendingTicket,
@@ -35,6 +34,7 @@ from nexus_trade.core.types import (
     GlobalRiskPolicy,
     MT5Tick,
     OrderSnapshot,
+    PartialClosePositionSnapshot,
     PositionCacheEntry,
     PositionType,
 )
@@ -310,9 +310,6 @@ class StrategyRunner:
         return self.trade_id_manager.generate_id()
 
     def _seconds_until_next_event(self, now: datetime) -> float:
-        if not self.next_entry_time and not self.next_exit_time:
-            self.next_entry_time, self.next_exit_time = self._initialize_schedule()
-            return 1.0
         candidates = [t for t in (self.next_entry_time, self.next_exit_time) if t]
         return (min(candidates) - now).total_seconds()
 
@@ -876,17 +873,17 @@ class StrategyRunner:
         )
         return new_count
 
-    def _apply_meta_labeling(self, data: pd.DataFrame, entry_request: EntryRequest) -> tuple[float | None, float]:
+    def _apply_meta_labeling(self, data: pd.DataFrame, base_volume: float) -> tuple[float | None, float]:
         if self.meta_model is None:
-            return None, entry_request.volume
+            return None, base_volume
         if self.feature_extractor is None:
-            return None, entry_request.volume
+            return None, base_volume
 
         try:
             features = self.feature_extractor(data)
             if features.empty:
                 logger.warning(f"{self.strategy_name:<9}: Meta-labeling skipped — feature extractor returned no rows")
-                return None, entry_request.volume
+                return None, base_volume
 
             features = features.iloc[[-1]]
             volume_multiplier: float = float(self.meta_model.predict_proba(features)[0, 1])
@@ -899,19 +896,18 @@ class StrategyRunner:
             logger.exception(
                 f"{self.strategy_name:<9}: MetaLabelFail reason=feature_or_model_error | action=reject_trade"
             )
-            return None, entry_request.volume
+            return None, base_volume
         if volume_multiplier < self.meta_min_confidence:
-            return None, entry_request.volume
+            return None, base_volume
 
-        original_volume = entry_request.volume
-        adjusted_volume = self.risk_manager.validate_position_size(self.symbol, original_volume * volume_multiplier)
+        adjusted_volume = self.risk_manager.validate_position_size(self.symbol, base_volume * volume_multiplier)
         if adjusted_volume is None:
             logger.warning(
-                f"{self.strategy_name:<9}: MetaLabelReject reason=invalid_pos_size | vol={original_volume * volume_multiplier:.4f}"  # noqa: E501
+                f"{self.strategy_name:<9}: MetaLabelReject reason=invalid_pos_size | vol={base_volume * volume_multiplier:.4f}"  # noqa: E501
             )
-            return None, entry_request.volume
+            return None, base_volume
         logger.info(
-            f"{self.strategy_name:<9}: MetaLabel vol={original_volume:.4f} -> "
+            f"{self.strategy_name:<9}: MetaLabel vol={base_volume:.4f} -> "
             f"{adjusted_volume:.4f} | mul={volume_multiplier:.3f}"
         )
         return volume_multiplier, adjusted_volume
@@ -960,8 +956,7 @@ class StrategyRunner:
         result = None
 
         try:
-            entry_request.volume = validation.volume
-            volume_multiplier, adjusted_volume = self._apply_meta_labeling(data, entry_request)
+            volume_multiplier, adjusted_volume = self._apply_meta_labeling(data, base_volume=validation.volume)
 
             if volume_multiplier is None and self.meta_model is not None:
                 self.risk_manager.release_position_reservation(reason="meta_labeling_rejected")
