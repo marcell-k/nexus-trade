@@ -29,7 +29,6 @@ class Position:
     magic: int
     volume: float
     price_open: float
-    price_current: float
     sl: float | None
     tp: float | None
     profit: float
@@ -201,7 +200,6 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
         magic=entry["magic"],
         volume=entry["volume"],
         price_open=entry["price_open"],
-        price_current=entry["price_open"],
         sl=entry["sl"] if entry["sl"] != 0.0 else None,
         tp=entry["tp"] if entry["tp"] != 0.0 else None,
         profit=entry["profit"],

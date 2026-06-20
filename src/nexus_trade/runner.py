@@ -1219,11 +1219,15 @@ class StrategyRunner:
         return abs(actual - level) <= level * _SL_TP_SNAP_TOLERANCE
 
     def _resolve_expected_exit_price(self, pos: Position) -> tuple[float, str] | None:
-        actual: float = pos.price_current
+        tick = self._get_cached_symbol_tick(pos.symbol)
+        if tick is None:
+            logger.error(f"{self.strategy_name:<9}: ExitPriceFail t={pos.ticket} | reason=tick_unavailable")
+            return None
+        is_buy: bool = pos.type == PositionType.BUY
+        actual: float = tick.bid if is_buy else tick.ask
         entry: float = pos.price_open
         sl: float | None = pos.sl if pos.sl else None
         tp: float | None = pos.tp if pos.tp else None
-        is_buy: bool = pos.type == PositionType.BUY
 
         if abs(actual - entry) <= entry * _BREAKEVEN_HALF_BAND_RATIO:
             return entry, _TRIGGER_BREAKEVEN

@@ -171,10 +171,6 @@ class TestCacheEntryToPosition:
         assert pos.sl == pytest.approx(1.09500)
         assert pos.tp == pytest.approx(1.11000)
 
-    def test_price_current_set_to_price_open(self) -> None:
-        pos = cache_entry_to_position(self._entry(price_open=1.10500))
-        assert pos.price_current == pytest.approx(1.10500)
-
 
 class TestPosition:
     def test_immutable(self) -> None:
@@ -185,7 +181,6 @@ class TestPosition:
             magic=1,
             volume=0.1,
             price_open=1.1,
-            price_current=1.1,
             sl=None,
             tp=None,
             profit=0.0,
