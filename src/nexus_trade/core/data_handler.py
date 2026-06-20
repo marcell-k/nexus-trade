@@ -18,6 +18,9 @@ if TYPE_CHECKING:
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
 
+TOLERANCE_SECONDS = 2
+LOOKBACK = 5
+
 
 @dataclass(slots=True)
 class _BarCacheEntry:
@@ -145,8 +148,7 @@ class DataHandler:
     def _update_cache_metadata(
         self, cache_key: tuple[str, int, int], bar_time_broker: pd.Timestamp, timeframe_minutes: int
     ) -> None:
-        tolerance_seconds = 2
-        next_bar_complete_at = bar_time_broker + pd.Timedelta(minutes=timeframe_minutes, seconds=tolerance_seconds)
+        next_bar_complete_at = bar_time_broker + pd.Timedelta(minutes=timeframe_minutes, seconds=TOLERANCE_SECONDS)
         self._latest_bar_cache[cache_key] = _BarCacheEntry(
             bar_time=bar_time_broker,
             timeframe_minutes=timeframe_minutes,
@@ -252,8 +254,7 @@ class DataHandler:
     ) -> pd.DataFrame | None:
         # Small headroom window: enough to absorb a few missed/delayed polls without
         # paying for a full `capacity`-sized fetch every time.
-        lookback = 5
-        rates = mt.copy_rates_from_pos(symbol, timeframe_mt5, 0, lookback)
+        rates = mt.copy_rates_from_pos(symbol, timeframe_mt5, 0, LOOKBACK)
         if rates is None or len(rates) == 0:
             return self._ring_to_output(ring, strategy_tz, strategy_config)
 
