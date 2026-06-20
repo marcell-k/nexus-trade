@@ -78,7 +78,6 @@ def _build_news_filter(
     *,
     buffer_minutes: int = 15,
     currencies: list[str] | None = None,
-    fail_open: bool = False,
 ) -> NewsFilter:
     """Construct NewsFilter with pre-loaded calendar — bypasses file I/O and registry."""
     dh = MagicMock()
@@ -94,7 +93,7 @@ def _build_news_filter(
         cfg.trading_hours = None
         reg.get_strategy_config.return_value = cfg
 
-        nf = NewsFilter(data_handler=dh, strategy_name="test", fail_open=fail_open)
+        nf = NewsFilter(data_handler=dh, strategy_name="test")
 
     if not calendar_df.empty:
         calendar_df = calendar_df.copy()
@@ -141,11 +140,6 @@ class TestNewsFilterIsSafeToTrade:
         holidays: frozenset[tuple[str, date]] = frozenset({("EUR", date.today())})
         nf = _build_news_filter(pd.DataFrame(), holidays, currencies=["USD"])
         assert nf.is_safe_to_trade() is True
-
-    def test_fail_open_allows_trading_on_missing_calendar(self) -> None:
-        nf = _build_news_filter(pd.DataFrame(), frozenset(), fail_open=True)
-        with patch.object(nf, "_load_calendar", return_value=False):
-            assert nf.is_safe_to_trade() is True
 
 
 class TestInvalidateCache:

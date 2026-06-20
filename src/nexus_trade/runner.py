@@ -795,7 +795,7 @@ class StrategyRunner:
 
         for pending_trade_id in candidate_ids:
             conditions = pending_snapshot.get(pending_trade_id)
-            if conditions is None or conditions.symbol != pos.symbol or conditions.magic != pos.magic:
+            if conditions is None or conditions.symbol != pos.symbol or conditions.magic != pos.magic_number:
                 continue
             if isinstance(conditions, BracketPendingTicket) and self._matches_bracket_conditions(
                 pos, conditions, conditions.submission_time
@@ -908,16 +908,24 @@ class StrategyRunner:
         if self.feature_extractor is None:
             return None, entry_request.volume
 
-        features = self.feature_extractor(data)
-        if features.empty:
-            logger.warning(f"{self.strategy_name:<9}: Meta-labeling skipped — feature extractor returned no rows")
+        try:
+            features = self.feature_extractor(data)
+            if features.empty:
+                logger.warning(f"{self.strategy_name:<9}: Meta-labeling skipped — feature extractor returned no rows")
+                return None, entry_request.volume
+
+            features = features.iloc[[-1]]
+            volume_multiplier: float = float(self.meta_model.predict_proba(features)[0, 1])
+
+            if self.calibration_model is not None:
+                volume_multiplier = float(
+                    self.calibration_model.transform(np.array([volume_multiplier], dtype=float))[0]
+                )
+        except Exception:
+            logger.exception(
+                f"{self.strategy_name:<9}: MetaLabelFail reason=feature_or_model_error | action=reject_trade"
+            )
             return None, entry_request.volume
-
-        features = features.iloc[[-1]]
-        volume_multiplier: float = float(self.meta_model.predict_proba(features)[0, 1])
-
-        if self.calibration_model is not None:
-            volume_multiplier = float(self.calibration_model.transform(np.array([volume_multiplier], dtype=float))[0])
         if volume_multiplier < self.meta_min_confidence:
             return None, entry_request.volume
 
@@ -1215,10 +1223,6 @@ class StrategyRunner:
             f"trigger={data.exit_trigger} | pos={self.local_position_count}/{max_pos} | "
             f"global={self.global_position_count.value}/{max_pos}"
         )
-
-    @staticmethod
-    def _snap_to_level(actual: float, level: float) -> bool:
-        return abs(actual - level) <= level * _SL_TP_SNAP_TOLERANCE
 
     def _resolve_expected_exit_price(self, pos: Position) -> tuple[float, str] | None:
         tick = self._get_cached_symbol_tick(pos.symbol)

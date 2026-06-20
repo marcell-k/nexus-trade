@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING
 import MetaTrader5 as mt
 import pandas as pd
 
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.constants import (
     OrderFilling,
     OrderType,
@@ -82,10 +83,8 @@ class OrderExecutor:
 
     def __init__(self, broker_tz: ZoneInfo) -> None:
         self.broker_tz: ZoneInfo = broker_tz
-        self.server_tz: str | None = broker_tz.key
 
         self.max_retries: int = 3
-        self.retry_delays: tuple[float, ...] = (0.025, 0.05, 0.10)
         self.retryable_codes: frozenset[int] = frozenset({10006, 10007, 10010, 10018, 10019})
         self._retcode_done: int = 10009
         _no_changes = getattr(mt, "TRADE_RETCODE_NO_CHANGES", None)
@@ -701,7 +700,7 @@ class OrderExecutor:
         symbol_set = frozenset(symbols)
         magic_set = frozenset(magics)
         for pos in normalized_positions:
-            sym, mag = pos["symbol"], pos["magic"]
+            sym, mag = pos["symbol"], pos["magic_number"]
             if sym in symbol_set and mag in magic_set:
                 side = "BUY" if pos["type"] == mt.POSITION_TYPE_BUY else "SELL"
                 position_groups[(sym, mag)][side].append(pos)
@@ -850,7 +849,7 @@ class OrderExecutor:
                 logger.warning(f"OrderSendNoRetry sym={symbol} | rc={result.retcode} | err={result.comment}")
                 return result
             if attempt < self.max_retries - 1:
-                backoff = self.retry_delays[attempt]
+                backoff = SYSTEM_TIMINGS.order_send_retry_backoff_seconds[attempt]
                 err = result.comment if result else "MT5 returned None"
                 logger.warning(
                     f"OrderSendRetry sym={symbol} | try={attempt + 1}/{self.max_retries} | "

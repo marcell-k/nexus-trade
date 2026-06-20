@@ -73,7 +73,6 @@ class NewsFilter:
         strategy_name: str,
         cache_ttl_seconds: int = 3600 * 12,
         shared_state: SharedState | None = None,
-        fail_open: bool = False,
     ) -> None:
         """
         Initialize news filter with strategy-specific configuration.
@@ -84,7 +83,6 @@ class NewsFilter:
             calendar_path: Override path to calendar CSV (default: MT5 path)
             cache_ttl_seconds: Calendar cache duration in seconds
             shared_state: Orchestrator shared state for calendar cache (optional)
-            fail_open: Unable to load calendar
 
 
         """
@@ -93,7 +91,6 @@ class NewsFilter:
         self.cache_ttl_seconds: int = cache_ttl_seconds
         self.shared_state: SharedState | None = shared_state
         self.calendar_path: Path = Path(os.getenv("MT5_CALENDAR_PATH", ""))
-        self.fail_open: bool = fail_open
 
         # Load strategy configuration
         self._load_configuration()
@@ -344,8 +341,7 @@ class NewsFilter:
         """Determine if trading is safe at given time."""
         check_time = self._normalize_check_time(check_time)
         if not self._load_calendar():
-            logger.warning(f"NewsCalUnavailable strat={self.strategy_name} | fail_open={self.fail_open}")
-            return self.fail_open
+            logger.warning(f"NewsCalUnavailable strat={self.strategy_name}")
 
         self._ensure_holiday_indexes()
         check_date_strategy = check_time.date()

@@ -34,14 +34,15 @@ class MarketCostCalculator:
     ) -> MarketCondition:
         raw_tick = mt.symbol_info_tick(symbol)
         if raw_tick is None:
-            raise RuntimeError(f"Tick data unavailable for {symbol!r}")
+            return self._unavailable(f"Tick data unavailable for {symbol!r}")
+
         tick: Tick = Tick.from_mt5(raw_tick)
 
         effective_info: SymbolSpec | None = (
             cached_symbol_info if cached_symbol_info is not None else SYMBOL_SPEC_CACHE.get_spec(symbol)
         )
         if effective_info is None:
-            raise RuntimeError(f"Symbol info unavailable for {symbol!r}")
+            return self._unavailable(f"Symbol info unavailable for {symbol!r}")
         point: float = effective_info.point
 
         spread_price: float = tick.ask - tick.bid
@@ -65,5 +66,16 @@ class MarketCostCalculator:
             spread_price=spread_price,
             slippage_price=slippage_price,
             is_valid=is_valid,
+            reason=reason,
+        )
+
+    @staticmethod
+    def _unavailable(reason: str) -> MarketCondition:
+        return MarketCondition(
+            spread_points=0.0,
+            slippage_points=0.0,
+            spread_price=0.0,
+            slippage_price=0.0,
+            is_valid=False,
             reason=reason,
         )

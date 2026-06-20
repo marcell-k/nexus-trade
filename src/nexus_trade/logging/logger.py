@@ -265,7 +265,7 @@ class TradeLogger:
                     data.position["ticket"],
                     entry_date,
                     entry_time,
-                    data.position["magic"],
+                    data.position["magic_number"],
                     data.strategy_name,
                     data.position["symbol"],
                     size,

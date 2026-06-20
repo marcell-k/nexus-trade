@@ -78,7 +78,7 @@ class Orchestrator:
         self.trade_id_db_path: Path = self.log_root / "trade_id_sequence.db"
         self.trade_id_manager: TradeIDSequenceManager = TradeIDSequenceManager(self.trade_id_db_path)
 
-        self.mt5_connection: MT5Connection | None = None
+        self.connection: MT5Connection | None = None
         self.executor: OrderExecutor | None = None
         self._shutdown_initiated: bool = False
         self._drift_first_seen: float | None = None
@@ -187,7 +187,7 @@ class Orchestrator:
             logger.info(
                 f"sym={pos['symbol']:<7} | side={side} | "
                 f"vol={pos['volume']:>4.2f} | px={price_display:>10} | "
-                f"m={pos['magic']:>3}"
+                f"m={pos['magic_number']:>3}"
             )
             logger.debug(f"t={pos['ticket']:>10}")
 
@@ -400,8 +400,8 @@ class Orchestrator:
             )
 
     def _connect_to_mt5(self) -> None:
-        self.mt5_connection = MT5Connection(self.account_config)
-        if not self.mt5_connection.connect():
+        self.connection = MT5Connection(self.account_config)
+        if not self.connection.connect():
             raise RuntimeError("Orchestrator startup failed: Unable to connect to MT5.")
         self.executor = OrderExecutor(self.account_config.broker_tz)
         logger.debug("OrchMT5 conn=ok")
@@ -585,8 +585,8 @@ class Orchestrator:
         self._verify_and_close_remaining()
 
         logger.debug("ShutdownPhase n=4 | step=close_mt5")
-        if self.mt5_connection:
-            self.mt5_connection.disconnect()
+        if self.connection:
+            self.connection.disconnect()
         logger.debug("ShutdownMT5 conn=closed")
 
         logger.debug("ShutdownPhase n=5 | step=reset_trade_counter")

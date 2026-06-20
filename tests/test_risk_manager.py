@@ -165,13 +165,6 @@ class TestCheckStrategyLimits:
         assert result.can_trade is False
         assert "daily trade limit" in result.reason.lower()
 
-    def test_skips_position_check_when_flag_set(
-        self, risk_manager: RiskManager, mock_runner: MagicMock, shared_state: SharedState
-    ) -> None:
-        mock_runner.local_position_count = 99
-        result = risk_manager.check_strategy_limits("test_strategy", skip_position_limit_check=True)
-        assert result.can_trade is True
-
 
 class TestCalculatePositionSize:
     def test_fractional_sizing_formula(

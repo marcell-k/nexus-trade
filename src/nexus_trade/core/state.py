@@ -38,32 +38,3 @@ class SharedState(_SharedStateRequired, total=False):
     hist_pnl_sum: float
     hist_peak_equity: float
     last_equity_update: float
-
-
-_POSITION_FIELDS: tuple[str, ...] = (
-    "ticket",
-    "symbol",
-    "type",
-    "volume",
-    "price_open",
-    "sl",
-    "tp",
-    "profit",
-    "swap",
-    "magic",
-    "time",
-)
-_POSITION_DEFAULTS: PositionCacheEntry = {
-    "ticket": 0,
-    "symbol": "",
-    "type": 0,
-    "volume": 0.0,
-    "price_open": 0.0,
-    "sl": 0.0,
-    "tp": 0.0,
-    "profit": 0.0,
-    "swap": 0.0,
-    "magic": 0,
-    "time": 0,
-}
-_ORDER_FIELDS: tuple[str, ...] = ("ticket", "symbol", "type", "magic")

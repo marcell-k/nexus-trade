@@ -28,7 +28,6 @@ class MetaLabelingCfg(FrozenModel):
     enabled: bool = False
     use_calibration: bool = False
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
-    recalculate_volume_on_bars: bool = False
 
 
 class StrategyCfg(FrozenModel):

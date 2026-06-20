@@ -26,7 +26,7 @@ class TestNormalizedPositionFromMt5:
             tp = 1.11000
             profit = 15.0
             swap = -0.5
-            magic = 12345
+            magic_number = 12345
             time = 1_700_000_000
 
         for k, v in overrides.items():
@@ -42,7 +42,7 @@ class TestNormalizedPositionFromMt5:
         assert pos.sl == pytest.approx(1.09500)
         assert pos.profit == pytest.approx(15.0)
         assert pos.swap == pytest.approx(-0.5)
-        assert pos.magic == 12345
+        assert pos.magic_number == 12345
         assert pos.time == 1_700_000_000
 
     def test_missing_attributes_use_defaults(self) -> None:
@@ -53,14 +53,14 @@ class TestNormalizedPositionFromMt5:
         assert pos.ticket == 99
         assert pos.symbol == ""
         assert pos.volume == pytest.approx(0.0)
-        assert pos.magic == 0
+        assert pos.magic_number == 0
 
     def test_type_coercion(self) -> None:
-        pos = NormalizedPosition.from_mt5(self._raw(ticket="55555", magic="99"))
+        pos = NormalizedPosition.from_mt5(self._raw(ticket="55555", magic_number="99"))
         assert isinstance(pos.ticket, int)
-        assert isinstance(pos.magic, int)
+        assert isinstance(pos.magic_number, int)
         assert pos.ticket == 55555
-        assert pos.magic == 99
+        assert pos.magic_number == 99
 
 
 class TestNormalizedPositionToCacheEntry:
@@ -75,12 +75,24 @@ class TestNormalizedPositionToCacheEntry:
             tp=1.11,
             profit=5.0,
             swap=-0.1,
-            magic=42,
+            magic_number=42,
             time=100,
         )
 
     def test_all_keys_present(self) -> None:
-        required = {"ticket", "symbol", "type", "volume", "price_open", "sl", "tp", "profit", "swap", "magic", "time"}
+        required = {
+            "ticket",
+            "symbol",
+            "type",
+            "volume",
+            "price_open",
+            "sl",
+            "tp",
+            "profit",
+            "swap",
+            "magic_number",
+            "time",
+        }
         assert required.issubset(self._pos().to_cache_entry().keys())
 
 
@@ -96,7 +108,7 @@ class TestNormalizedPositionToPartialSnapshot:
             tp=1.24,
             profit=-3.0,
             swap=0.0,
-            magic=9,
+            magic_number=9,
             time=200,
         )
         snap = pos.to_partial_snapshot()
@@ -153,7 +165,7 @@ class TestCacheEntryToPosition:
             tp=1.11000,
             profit=5.0,
             swap=0.0,
-            magic=42,
+            magic_number=42,
             time=100,
         )
         for k, v in overrides.items():
@@ -178,7 +190,7 @@ class TestPosition:
             ticket=1,
             symbol="EURUSD",
             type=PositionType.BUY,
-            magic=1,
+            magic_number=1,
             volume=0.1,
             price_open=1.1,
             sl=None,

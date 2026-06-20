@@ -30,7 +30,7 @@ def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierPr
     try:
         import xgboost as xgb  # type: ignore[reportMissingImports]
     except ImportError:
-        logger.warning(f"{strategy_name}: xgboost not installed; meta-labeling disabled")
+        logger.warning(f"{strategy_name}: xgboost not installed | meta-labeling disabled")
         return None
 
     try:

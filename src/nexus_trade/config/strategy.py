@@ -41,7 +41,6 @@ class RiskConfig(FrozenModel):
     max_trades: int = Field(default=1, gt=0)
     max_spread_points: int = Field(default=100, ge=0)
     max_slippage_points: int = Field(default=100, ge=0)
-    max_order_fill_time_seconds: int = Field(default=2, gt=0)
 
 
 class BaseStrategyParams(FrozenModel):

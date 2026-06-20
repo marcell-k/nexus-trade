@@ -1,7 +1,10 @@
 import math
 from dataclasses import dataclass
+from typing import get_args
 
-VALID_ORDER_TYPES = {"market", "bracket", "stop", "limit"}
+from nexus_trade.config.strategy import StrategyOrderType
+
+VALID_ORDER_TYPES: frozenset[str] = frozenset(get_args(StrategyOrderType))
 
 
 @dataclass

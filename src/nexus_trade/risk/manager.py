@@ -48,10 +48,6 @@ class RiskManager:
     4. Position sizing (MT5 symbol_info - 1-5ms)
     """
 
-    DEFAULT_ACCOUNT_CACHE_TTL: int = 900  # 15min
-    DEFAULT_SYMBOL_CACHE_TTL: int = 14400  # 4 hour
-    DEFAULT_DRAWDOWN_REFRESH_SECONDS: int = SYSTEM_TIMINGS.drawdown_refresh_interval_seconds
-
     def __init__(
         self,
         strategy_config: StrategyConfig[BaseStrategyParams],
@@ -62,11 +58,7 @@ class RiskManager:
         data_handler: DataHandler,
         broker_tz: ZoneInfo,
         strategy_runner: StrategyRunnerProtocol | None = None,
-        account_cache_ttl: int | None = None,
-        symbol_cache_ttl: int | None = None,
     ) -> None:
-        self.ACCOUNT_CACHE_TTL: int = account_cache_ttl or self.DEFAULT_ACCOUNT_CACHE_TTL
-        self.SYMBOL_CACHE_TTL: int = symbol_cache_ttl or self.DEFAULT_SYMBOL_CACHE_TTL
         self.strategy_config: StrategyConfig[BaseStrategyParams] = strategy_config
         self.risk_config: RiskConfig = strategy_config.risk
         self.global_policy: GlobalRiskPolicy = global_policy
@@ -131,13 +123,9 @@ class RiskManager:
         expected_price: float,
         sl_price: float,
         signal: int,
-        skip_position_limit_check: bool = False,
     ) -> ValidationResult:
         """Validate trade with layered risk checks (ordered by computational cost)."""
         result = self.check_global_risk()
-        if not result.can_trade:
-            return result
-        result = self.check_strategy_limits(strategy_name, skip_position_limit_check)
         if not result.can_trade:
             return result
         result = self._check_trading_hours(strategy_name)
@@ -152,7 +140,11 @@ class RiskManager:
         volume = self.calculate_position_size(symbol, expected_price, sl_price, strategy_name)
         if volume <= 0:
             return ValidationResult(False, "Position size invalid")
-        reserved_count = self._reserve_position_slot()
+        reserved_count = self._check_and_reserve_position_slot()
+        if reserved_count is None:
+            logger.warning(f"PosSlotRej strat={self.strategy_name} | reason=limit_reached_at_reserve")
+            return ValidationResult(False, "Global position limit reached")
+
         logger.debug(
             f"PosSlotRes strat={self.strategy_name} | cnt={reserved_count}/{self.global_policy['max_total_positions']}"
         )
@@ -190,8 +182,10 @@ class RiskManager:
         )
         return ValidationResult(True, "Market conditions OK")
 
-    def _reserve_position_slot(self) -> int:
+    def _check_and_reserve_position_slot(self) -> int | None:
         with self.global_position_count.get_lock():
+            if self.global_position_count.value >= self.global_policy["max_total_positions"]:
+                return None
             self.global_position_count.value += 1
             return self.global_position_count.value
 
@@ -219,7 +213,7 @@ class RiskManager:
         if self.global_trade_count.value >= self.global_policy["max_daily_trades"]:
             return ValidationResult(False, "Daily trade limit reached")
 
-        if not self._drawdown_cache.is_valid(self.DEFAULT_DRAWDOWN_REFRESH_SECONDS):
+        if not self._drawdown_cache.is_valid(SYSTEM_TIMINGS.drawdown_refresh_interval_seconds):
             self._drawdown_cache.set(
                 (
                     float(self.shared_state["daily_drawdown"]),
@@ -235,25 +229,20 @@ class RiskManager:
             return ValidationResult(False, f"Max drawdown {max_dd * 100:.1f}%")
         return ValidationResult(True, "Global checks passed")
 
-    def check_strategy_limits(self, strategy_name: str, skip_position_limit_check: bool = False) -> ValidationResult:
+    def check_strategy_limits(self, strategy_name: str) -> ValidationResult:
         """Check per-strategy position and trade limits."""
         magic = self.strategy_config.execution.magic_number
 
-        if not skip_position_limit_check:
-            current_positions = self._get_strategy_position_count(strategy_name, magic)
-            if current_positions is None:
-                return ValidationResult(False, "MT5 API error: positions_get() returned None")
+        current_positions = self._get_strategy_position_count(strategy_name, magic)
+        if current_positions is None:
+            return ValidationResult(False, "MT5 API error: positions_get() returned None")
 
-            max_positions = self.risk_config.max_positions
-            if current_positions >= max_positions:
-                logger.warning(
-                    f"StratLimitHit strat={strategy_name} | typ=positions | "
-                    f"cur={current_positions} | max={max_positions}"
-                )
-                return ValidationResult(False, "Strategy position limit")
-        else:
-            current_positions = self.strategy_runner.local_position_count if self.strategy_runner else 0
-            max_positions = self.risk_config.max_positions
+        max_positions = self.risk_config.max_positions
+        if current_positions >= max_positions:
+            logger.warning(
+                f"StratLimitHit strat={strategy_name} | typ=positions | cur={current_positions} | max={max_positions}"
+            )
+            return ValidationResult(False, "Strategy position limit")
 
         daily_trade_counts: dict[str, int] = self.shared_state["daily_trade_counts"]
         strategy_trades: int = daily_trade_counts.get(strategy_name, 0)
@@ -284,7 +273,7 @@ class RiskManager:
         return sum(1 for pos in positions if pos.magic == magic)
 
     def _get_account_info_cached(self) -> AccountInfo | None:
-        if self._account_cache.is_valid(self.ACCOUNT_CACHE_TTL):
+        if self._account_cache.is_valid(SYSTEM_TIMINGS.account_info_cache_ttl_seconds):
             return self._account_cache.value
         result = mt.account_info()
         if result is not None:

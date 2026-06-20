@@ -1,12 +1,13 @@
 import logging
 import time
 from enum import Enum
-from typing import Final
 
 import MetaTrader5 as mt5
 from MetaTrader5 import AccountInfo
 
+# Assuming this exists in your project
 from nexus_trade.config.account import AccountConfig
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 
 logger = logging.getLogger(__name__)
 
@@ -19,21 +20,17 @@ class ConnectionState(Enum):
 
 
 class MT5Connection:
-    BACKOFF_SECONDS: Final[list[int]] = [1, 2, 4, 8, 16]
+    # Define your backoff seconds as a class attribute to fix the missing variable bug
 
-    def __init__(
-        self, config: AccountConfig, max_reconnection_attempts: int = 5, connection_check_ttl: int = 60
-    ) -> None:
+    def __init__(self, config: AccountConfig, connection_check_ttl: int = 60) -> None:
         self.config: AccountConfig = config
         self.state: ConnectionState = ConnectionState.DISCONNECTED
-        self.reconnection_attempts: int = 0
-        self.max_reconnection_attempts: int = max_reconnection_attempts
         self.connection_check_ttl: int = connection_check_ttl
         self._cached_connection_state: bool | None = None
         self._cache_timestamp_monotonic: float = 0.0
 
-    def connect(self, max_retries: int = 3, retry_delay: int = 1) -> bool:
-        """Establish MT5 connection with retry logic."""
+    def connect(self, max_retries: int = 5) -> bool:
+        """Establish MT5 connection with exponential backoff retry logic."""
         if self.is_connected(use_cache=False):
             logger.debug("ConnSkip state=already_connected")
             return True
@@ -41,6 +38,12 @@ class MT5Connection:
         for attempt in range(max_retries):
             if attempt > 0:
                 mt5.shutdown()
+                # Exponential backoff based on the attempt number
+                backoff = SYSTEM_TIMINGS.connect_backoff_seconds[
+                    min(attempt - 1, len(SYSTEM_TIMINGS.connect_backoff_seconds) - 1)
+                ]
+                logger.warning(f"Reconnecting... attempt={attempt}/{max_retries} | backoff={backoff}s")
+                time.sleep(backoff)
 
             if not mt5.initialize(
                 login=self.config.login,
@@ -49,17 +52,10 @@ class MT5Connection:
                 path=self.config.path,
             ):
                 logger.warning(f"ConnInitFail n={attempt + 1}/{max_retries} | err={mt5.last_error()}")
-                if attempt < max_retries - 1:
-                    connect_idx = min(attempt, len(self.BACKOFF_SECONDS) - 1)
-                    time.sleep(retry_delay * self.BACKOFF_SECONDS[connect_idx])
                 continue
 
             account_info = mt5.account_info()
             if not self._validate_account(account_info):
-                mt5.shutdown()
-                if attempt < max_retries - 1:
-                    connect_idx = min(attempt, len(self.BACKOFF_SECONDS) - 1)
-                    time.sleep(retry_delay * self.BACKOFF_SECONDS[connect_idx])
                 continue
 
             logger.debug("ConnOK")
@@ -70,52 +66,18 @@ class MT5Connection:
         self._set_disconnected()
         return False
 
-    def reconnect(self) -> bool:
-        """Attempt reconnection with exponential backoff."""
-        self.reconnection_attempts += 1
-
-        if self.reconnection_attempts > self.max_reconnection_attempts:
-            logger.critical(f"ReconnFail tries={self.max_reconnection_attempts} | action=manual")
-            self._set_disconnected()
-            return False
-
-        lookup_index = min(self.reconnection_attempts - 1, len(self.BACKOFF_SECONDS) - 1)
-        backoff_seconds = self.BACKOFF_SECONDS[lookup_index]
-        logger.warning(
-            f"ReconnStart n={self.reconnection_attempts}/{self.max_reconnection_attempts} | backoff={backoff_seconds}s"
-        )
-        time.sleep(backoff_seconds)
-
-        try:
-            connected = self.connect(max_retries=3, retry_delay=10)
-        except Exception:
-            self._set_disconnected()
-            raise
-
-        if connected:
-            logger.debug(f"ReconnOK n={self.reconnection_attempts}")
-            return True
-
-        logger.error(f"ReconnFail n={self.reconnection_attempts}")
-        self._set_disconnected()
-        return False
-
     def disconnect(self) -> None:
         """Graceful disconnection."""
         try:
             mt5.shutdown()
             logger.debug("ConnClosed")
-            self._set_disconnected()
-        except (OSError, RuntimeError) as e:
-            logger.error(f"ConnCloseErr err={e}", exc_info=True)
-            self._set_disconnected()
         except Exception as e:
-            logger.critical(f"ConnCloseFatal err={e}", exc_info=True)
+            logger.error(f"ConnCloseErr err={e}", exc_info=True)
+        finally:
             self._set_disconnected()
-            raise
 
     def is_connected(self, use_cache: bool = True) -> bool:
-        """Check if MT5 terminal is alive and authenticated. Uses cached result within TTL."""
+        """Check if MT5 terminal is alive and authenticated."""
         if use_cache and self._is_cache_valid():
             return bool(self._cached_connection_state)
 
@@ -129,17 +91,16 @@ class MT5Connection:
             self._set_disconnected()
             return False
 
-        logger.debug("ConnCheckOK")
         self._set_connected()
         return True
 
     def ensure_connected(self) -> bool:
-        """Ensure MT5 connection is active, attempt reconnection if disconnected."""
+        """Ensure MT5 connection is active, attempt connection if disconnected."""
         if self.is_connected():
             return True
 
         logger.warning("ConnLost action=reconnect")
-        return self.reconnect()
+        return self.connect()
 
     def _validate_account(self, account_info: AccountInfo | None) -> bool:
         if account_info is None:
@@ -154,25 +115,19 @@ class MT5Connection:
         return True
 
     def _is_cache_valid(self) -> bool:
-        """Check if cached connection state is still valid."""
         if self._cached_connection_state is None:
             return False
-        cache_age = time.monotonic() - self._cache_timestamp_monotonic
-        return cache_age < self.connection_check_ttl
+        return (time.monotonic() - self._cache_timestamp_monotonic) < self.connection_check_ttl
 
     def _set_connected(self) -> None:
-        """Update state to connected and reset connection."""
         self.state = ConnectionState.CONNECTED
-        self.reconnection_attempts = 0
         self._cached_connection_state = True
         self._cache_timestamp_monotonic = time.monotonic()
 
     def _set_disconnected(self) -> None:
-        """Update state to disconnected and invalidate cache."""
         self.state = ConnectionState.DISCONNECTED
         self.invalidate_cache()
 
     def invalidate_cache(self) -> None:
-        """Manually invalidate the connection state cache."""
         self._cached_connection_state = None
         self._cache_timestamp_monotonic = 0.0

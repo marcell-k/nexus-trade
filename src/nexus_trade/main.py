@@ -68,8 +68,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _clean_env_name(env_path: Path) -> str:
-    env_filename = env_path.name
-    return env_filename.replace(".", "").replace("env", "")
+    return env_path.stem
 
 
 def main() -> int:
