@@ -257,14 +257,14 @@ class StrategyRunner:
             self.cleanup()
 
     def cleanup(self) -> None:
-        """Close positions, cancel orders, drain logger, disconnect MT5."""
+        """Cancel pending orders, drain logger, disconnect MT5."""
         if self._cleanup_done:
             return
         self._cleanup_done = True
 
         logger.debug(f"CleanupStart strat={self.strategy_name}")
 
-        self._reconcile_shutdown_state()
+        self._cancel_pending_orders_on_shutdown()
 
         if self.trade_logger and hasattr(self.trade_logger, "shutdown"):
             logger.debug(f"CleanupTradeLog strat={self.strategy_name} | action=drain")
@@ -1341,20 +1341,8 @@ class StrategyRunner:
         if total_cancelled > 0:
             logger.info(f"{self.strategy_name:<9}: OCOCancel n={total_cancelled}")
 
-    def _reconcile_shutdown_state(self) -> None:
-        positions = self._load_strategy_positions(mode="direct", include_unknown=True)
-        if positions is None:
-            logger.error(f"{self.strategy_name:<9}: ShutdownRecFail reason=positions_get_failed")
-            return
-
-        if positions:
-            tickets_to_close = [pos["ticket"] for pos in positions]
-            results = self.executor.close_positions(tickets=tickets_to_close)
-            successful = [t for t, (ok, _) in results.items() if ok]
-            if successful:
-                self.known_positions.difference_update(successful)
-                logger.info(f"{self.strategy_name:<9}: ShutdownPos closed={len(successful)}/{len(tickets_to_close)}")
-
+    def _cancel_pending_orders_on_shutdown(self) -> None:
+        """Cancel pending orders only — position closing is owned solely by Orchestrator._verify_and_close_remaining."""
         orders = self._get_strategy_orders_direct()
         if orders is None:
             logger.error(f"{self.strategy_name:<9}: ShutdownRecFail reason=orders_get_failed")
