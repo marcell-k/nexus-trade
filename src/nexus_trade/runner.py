@@ -181,7 +181,7 @@ class StrategyRunner:
             "StrategyProtocol", strategy_class(strategy_name=self.strategy_name, params=self.config.params)
         )
 
-        self.data_handler = DataHandler(self.broker_tz)
+        self.data_handler = DataHandler(self.broker_tz, calendar_path=self.broker_config.calendar_path)
         self.executor = OrderExecutor(self.broker_tz)
         self.risk_manager = RiskManager(
             strategy_config=self.config,

@@ -13,6 +13,7 @@ from nexus_trade.core.models import Tick
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 
 if TYPE_CHECKING:
+    from pathlib import Path
     from zoneinfo import ZoneInfo
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
@@ -121,8 +122,10 @@ class _RingBuffer:
 
 
 class DataHandler:
-    def __init__(self, broker_tz: ZoneInfo) -> None:
+    def __init__(self, broker_tz: ZoneInfo, calendar_path: Path | None = None) -> None:
         self.broker_tz: ZoneInfo = broker_tz
+        self.calendar_path: Path | None = calendar_path
+
         self._latest_bar_cache: dict[tuple[str, int, int], _BarCacheEntry] = {}
         self._ring_buffers: dict[tuple[str, int, int], _RingBuffer] = {}
 

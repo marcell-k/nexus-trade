@@ -10,6 +10,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
+from pydantic import ValidationError
+
 from nexus_trade.config.account import load_account_config_from_env, load_env_file
 from nexus_trade.config.profile import load_profile
 from nexus_trade.utils.format import log_section_header
@@ -122,14 +124,18 @@ def main() -> int:
             logger.critical("MainFail reason=RISK_PROFILE_not_set")
             return 1
 
-        profile_path = resolve_env_path(profile_env)
-        if profile_path is None:
-            profile_path = Path(profile_env).expanduser()
+        resolved_profile_path: Path = resolve_env_path(profile_env) or Path(profile_env).expanduser()
 
-        profile = load_profile(profile_path)
-        logger.info(f"MainStart acct={profile.account.type} | profile={profile_path.name}")
+        try:
+            account_config = load_account_config_from_env(risk_profile_path=resolved_profile_path)
+        except ValidationError as exc:
+            logger.critical(f"ConfigFail err={exc}")
+            return 1
 
-        account_config = load_account_config_from_env()
+        assert account_config.risk_profile_path is not None  # guaranteed: passed resolved path above
+        profile = load_profile(account_config.risk_profile_path)
+        logger.info(f"MainStart acct={profile.account.type} | profile={account_config.risk_profile_path.name}")
+
         orchestrator = Orchestrator(account_config=account_config, profile=profile, log_root=log_root)
 
         with WindowsInhibitor(keep_display=False, away_mode=True, logger=logger):

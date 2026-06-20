@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 from collections.abc import Iterable
 from datetime import date, datetime
@@ -90,7 +89,7 @@ class NewsFilter:
         self.strategy_name: str = strategy_name
         self.cache_ttl_seconds: int = cache_ttl_seconds
         self.shared_state: SharedState | None = shared_state
-        self.calendar_path: Path = Path(os.getenv("MT5_CALENDAR_PATH", ""))
+        self.calendar_path: Path | None = None
 
         # Load strategy configuration
         self._load_configuration()
@@ -304,8 +303,8 @@ class NewsFilter:
 
     def _load_from_file(self) -> bool:
         """Load and cache calendar from CSV file."""
-        if not self.calendar_path.exists():
-            logger.warning(f"CalFileMissing path={self.calendar_path}")
+        if self.calendar_path is None:
+            logger.debug(f"CalFileSkip strat={self.strategy_name} | reason=calendar_path_not_configured")
             return False
 
         df, holidays = preprocess_calendar_file(self.calendar_path, self.broker_tz)

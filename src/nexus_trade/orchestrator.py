@@ -5,7 +5,6 @@ from __future__ import annotations
 import ctypes
 import importlib
 import logging
-import os
 import threading
 import time
 from datetime import datetime, timedelta
@@ -193,13 +192,9 @@ class Orchestrator:
 
     def preload_calendar_cache(self) -> None:
         """Parse economic calendar CSV and seed shared_state before spawning strategies."""
-        raw_calendar_path = os.getenv("MT5_CALENDAR_PATH")
-        if raw_calendar_path is None:
-            logger.warning("CalPreloadSkip reason=MT5_CALENDAR_PATH_not_set")
-            return
-        calendar_path = Path(raw_calendar_path)
-        if not calendar_path.exists():
-            logger.warning(f"CalPreloadSkip path={calendar_path} | reason=not_found")
+        calendar_path = self.account_config.calendar_path
+        if calendar_path is None:
+            logger.info("CalPreloadSkip reason=calendar_path_not_configured")
             return
 
         df, holidays_frozen = preprocess_calendar_file(calendar_path, self.account_config.broker_tz)
