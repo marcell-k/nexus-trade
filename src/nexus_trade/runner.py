@@ -378,7 +378,7 @@ class StrategyRunner:
             raise RuntimeError(f"{self.strategy_name}: Cannot initialize — MT5 API failure")
         if not positions:
             self.local_position_count = 0
-            logger.debug(f"{self.strategy_name:<9}: InitPos n=0")
+            logger.debug(f"InitPos strat={self.strategy_name} | n=0")
             return
 
         position_count = len(positions)
@@ -388,7 +388,7 @@ class StrategyRunner:
         try:
             reconciled_map = self.trade_logger.get_open_trades_by_ticket_last_three(tracked_tickets)
         except (sqlite3.Error, RuntimeError):
-            logger.error(f"{self.strategy_name:<9}: Startup reconciliation failed", exc_info=True)
+            logger.error(f"StartupReconciliationFail strat={self.strategy_name}", exc_info=True)
             reconciled_map = {}
 
         reconciled_count = 0
@@ -434,7 +434,7 @@ class StrategyRunner:
         )
         new_ids_str = f"{new_trade_ids[0]}..{new_trade_ids[-1]}" if new_trade_ids else "none"
         logger.info(
-            f"{self.strategy_name:<9}: InitPos n={position_count} | rec={reconciled_count} | "
+            f"InitPos strat={self.strategy_name} | n={position_count} | rec={reconciled_count} | "
             f"new={len(missing_positions)} | ids={new_ids_str} | t=[{ticket_str}]"
         )
 
@@ -468,7 +468,7 @@ class StrategyRunner:
             prefer_cache=False,
         )
         if positions is None:
-            logger.error(f"{self.strategy_name:<9}: PosGetFail reason=mt5_api_failure")
+            logger.error(f"PosGetFail strat={self.strategy_name} | reason=mt5_api_failure")
             return None
         if include_unknown:
             return positions
@@ -479,7 +479,7 @@ class StrategyRunner:
         repo: PositionRepository = self.position_repo
         orders = repo.get_strategy_orders(symbol=self.symbol, magic=self.magic_number)
         if orders is None:
-            logger.error(f"{self.strategy_name:<9}: OrdGetFail reason=mt5_api_failure")
+            logger.error(f"OrdGetFail strat={self.strategy_name} | reason=mt5_api_failure")
         return orders
 
     def _requery_position(self, ticket: int) -> Position | None:
@@ -490,17 +490,17 @@ class StrategyRunner:
         return cache_entry_to_position(entry)
 
     def _invalidate_cache_for_ticket(self, ticket: int) -> None:
-        logger.debug(f"{self.strategy_name:<9}: CacheInvalidate t={ticket} | refreshes on next heartbeat")
+        logger.debug(f"CacheInvalidate strat={self.strategy_name} | t={ticket}")
 
     def _resolve_entry_prices(self, ticket: int, pos: Position) -> tuple[int | None, float | None, float | None, float]:
         trade_id = self.ticket_to_trade_id.get(ticket)
         if trade_id is None:
-            logger.error(f"{self.strategy_name:<9}: OrphanPos t={ticket} | reason=no_metadata")
+            logger.error(f"OrphanPos strat={self.strategy_name} | t={ticket} | reason=no_metadata")
             return None, pos.price_open, pos.sl, pos.price_open
 
         metadata = self.entry_metadata.get(trade_id)
         if metadata is None:
-            logger.error(f"{self.strategy_name:<9}: OrphanPos t={ticket} | id={trade_id} | reason=metadata_evicted")
+            logger.error(f"OrphanPos strat={self.strategy_name} | t={ticket} | id={trade_id} | reason=metadata_evicted")
             return trade_id, pos.price_open, pos.sl, pos.price_open
         entry_request = metadata.get("entry_request")
         entry_price = pos.price_open
@@ -632,8 +632,8 @@ class StrategyRunner:
                 close_logs.append((trade_id, ticket, snapshot, metadata))
             elif was_known or trade_id is not None:
                 logger.warning(
-                    f"{self.strategy_name}:{self.symbol} | "
-                    f"EXTERNAL CLOSE t={ticket} | reason=missing_metadata_or_snapshot"
+                    f"ExternalClose strat={self.strategy_name} | symbol={self.symbol} | "
+                    f"t={ticket} | reason=missing_metadata_or_snapshot"
                 )
 
             if was_known:
@@ -654,20 +654,20 @@ class StrategyRunner:
                 else snapshot["price_open"],
             )
             self.trade_logger.log_close(close_data)
-            logger.info(f"{self.strategy_name}: EXTERNAL CLOSE | id={trade_id} | t={ticket}")
+            logger.info(f"ExternalClose strat={self.strategy_name} | id={trade_id} | t={ticket}")
 
         global_count = self._atomic_decrement_global_positions(closed_count, "external_close")
 
         if closed_count:
             logger.info(
-                f"{self.strategy_name:<9}: PosClosedDetect n={len(closed_tickets)} | "
+                f"PosClosedDetect strat={self.strategy_name} | n={len(closed_tickets)} | "
                 f"local={self.local_position_count}/{self.global_risk_policy['max_total_positions']} | "
                 f"global={global_count}/{self.global_risk_policy['max_total_positions']}"
             )
         elif closed_tickets:
             logger.warning(
-                f"{self.strategy_name}:{self.symbol} | "
-                f"Detected {len(closed_tickets)} closed tickets but no tracked positions to decrement"
+                f"PosClosedDetectWarning strat={self.strategy_name} | symbol={self.symbol} | "
+                f"n={len(closed_tickets)} | reason=no_tracked_positions_to_decrement"
             )
 
     def _handle_new_fill(self, pos: Position) -> None:
@@ -680,7 +680,9 @@ class StrategyRunner:
         if trade_id is not None:
             _prior = self.entry_metadata.get(trade_id)
             if _prior is not None and _prior.get("position_snapshot") is not None:
-                logger.warning(f"{self.strategy_name:<9}: DualFill t={ticket} | id={trade_id} | action=split_trade_id")
+                logger.warning(
+                    f"DualFill strat={self.strategy_name} | t={ticket} | id={trade_id} | action=split_trade_id"
+                )
                 trade_id = None
         needs_resolution = (
             trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
@@ -695,12 +697,12 @@ class StrategyRunner:
         if trade_id is None:
             trade_id = self._handle_orphaned_fill(ticket, pos)
             if trade_id is None:
-                logger.error(f"{self.strategy_name:<9}: OrphanFillFail t={ticket} | action=skip")
+                logger.error(f"OrphanFillFail strat={self.strategy_name} | t={ticket} | action=skip")
                 return
 
         metadata = self.entry_metadata.get(trade_id)
         if metadata is None:
-            logger.error(f"{self.strategy_name:<9}: FillMetaMissing id={trade_id} | action=skip")
+            logger.error(f"FillMetaMissing strat={self.strategy_name} | id={trade_id} | action=skip")
             return
 
         self.local_position_count += 1
@@ -727,7 +729,7 @@ class StrategyRunner:
         self.trade_logger.log_fill(fill_data)
 
         logger.info(
-            f"{self.strategy_name:<9}: Fill id={trade_id} | t={ticket} | "
+            f"Fill strat={self.strategy_name} | id={trade_id} | t={ticket} | "
             f"{'B' if pos.type == PositionType.BUY else 'S'} {pos.volume:.2f}@"
             f"{format_price_display(pos.price_open)} | "
             f"pos={self.local_position_count}/{self.global_risk_policy['max_total_positions']} | "
@@ -735,7 +737,7 @@ class StrategyRunner:
         )
 
     def _handle_orphaned_fill(self, ticket: int, pos: Position) -> int | None:
-        logger.debug(f"{self.strategy_name:<9}: OrphanFill t={ticket} | action=generate_fallback_id")
+        logger.debug(f"OrphanFill strat={self.strategy_name} | t={ticket} | action=generate_fallback_id")
         trade_id = self._generate_trade_id()
         self.entry_metadata[trade_id] = {
             "submission_time": time.time(),
@@ -765,7 +767,7 @@ class StrategyRunner:
 
         if direct_match is not None:
             self._cleanup_pending(direct_match, composite_key)
-            logger.debug(f"{self.strategy_name:<9}: StandardResolved id={direct_match}")
+            logger.debug(f"StandardResolved strat={self.strategy_name} | id={direct_match}")
             return direct_match
 
         if not candidate_ids:
@@ -796,11 +798,11 @@ class StrategyRunner:
 
         opposite_ticket = conditions.sell_order_ticket if is_buy else conditions.buy_order_ticket
         if opposite_ticket and self.executor.cancel_order(opposite_ticket):
-            logger.info(f"{self.strategy_name:<9}: BracketOppCancel t={opposite_ticket}")
+            logger.info(f"BracketOppCancel strat={self.strategy_name} | t={opposite_ticket}")
 
         self._cleanup_pending(pending_trade_id, composite_key)
         logger.debug(
-            f"{self.strategy_name:<9}: BracketResolved id={pending_trade_id} -> t={ticket} | "
+            f"BracketResolved strat={self.strategy_name} | id={pending_trade_id} | t={ticket} | "
             f"side={'BUY' if is_buy else 'SELL'}"
         )
         return pending_trade_id
@@ -839,7 +841,7 @@ class StrategyRunner:
                 continue
 
             logger.warning(
-                f"{self.strategy_name:<9}: BracketExpired id={trade_id} | "
+                f"BracketExpired strat={self.strategy_name} | "
                 f"elapsed={elapsed:.0f}s | buy_t={buy_ticket} | sell_t={sell_ticket}"
             )
             self.risk_manager.release_position_reservation(reason="bracket_expired")
@@ -859,7 +861,7 @@ class StrategyRunner:
             current = self.global_position_count.value
             if current < count:
                 logger.warning(
-                    f"{self.strategy_name:<9}: PosCountUnderflow prevented | "
+                    f"PosCountUnderflow prevented strat={self.strategy_name} | "
                     f"requested=-{count} | current={current} | reason={reason}"
                 )
                 self.global_position_count.value = 0
@@ -868,7 +870,7 @@ class StrategyRunner:
             new_count = self.global_position_count.value
 
         logger.debug(
-            f"{self.strategy_name:<9}: PosCountDec n={new_count}/"
+            f"PosCountDec strat={self.strategy_name} | n={new_count}/"
             f"{self.global_risk_policy['max_total_positions']} | delta=-{count} | reason={reason}"
         )
         return new_count
@@ -894,7 +896,7 @@ class StrategyRunner:
                 )
         except Exception:
             logger.exception(
-                f"{self.strategy_name:<9}: MetaLabelFail reason=feature_or_model_error | action=reject_trade"
+                f"MetaLabelFail strat={self.strategy_name} | reason=feature_or_model_error | action=reject_trade"
             )
             return None, base_volume
         if volume_multiplier < self.meta_min_confidence:
@@ -902,12 +904,10 @@ class StrategyRunner:
 
         adjusted_volume = self.risk_manager.validate_position_size(self.symbol, base_volume * volume_multiplier)
         if adjusted_volume is None:
-            logger.warning(
-                f"{self.strategy_name:<9}: MetaLabelReject reason=invalid_pos_size | vol={base_volume * volume_multiplier:.4f}"  # noqa: E501
-            )
+            logger.warning(f"MetaLabelReject strat={self.strategy_name} | reason=invalid_pos_size")
             return None, base_volume
         logger.info(
-            f"{self.strategy_name:<9}: MetaLabel vol={base_volume:.4f} -> "
+            f"MetaLabel strat={self.strategy_name} | vol={base_volume:.4f} -> "
             f"{adjusted_volume:.4f} | mul={volume_multiplier:.3f}"
         )
         return volume_multiplier, adjusted_volume
@@ -926,7 +926,7 @@ class StrategyRunner:
             entry_price = entry_request.buy_stop
             if entry_price is None or sl_price is None:
                 logger.error(
-                    f"{self.strategy_name:<9}: TradeReject reason=bracket_prices_missing"
+                    f"TradeReject strat={self.strategy_name} | reason=bracket_prices_missing"
                     f" | buy_stop={entry_request.buy_stop} buy_sl={entry_request.buy_sl}"
                 )
                 return
@@ -934,7 +934,7 @@ class StrategyRunner:
             sl_price = entry_request.sl
             entry_price = data["Close"].iloc[-1]
             if sl_price is None:
-                logger.error(f"{self.strategy_name:<9}: TradeReject reason=sl_missing")
+                logger.error(f"TradeReject strat={self.strategy_name} | reason=sl_missing")
                 return
 
         validation = self.risk_manager.validate_trade(
@@ -946,9 +946,9 @@ class StrategyRunner:
         )
         if not validation.can_trade:
             if validation.reason == "outside_trading_hours":
-                logger.debug(f"{self.strategy_name:<9}: TradeSkip reason=outside_trading_hours")
+                logger.debug(f"TradeSkip strat={self.strategy_name} | reason=outside_trading_hours")
             else:
-                logger.warning(f"{self.strategy_name:<9}: TradeReject reason={validation.reason}")
+                logger.warning(f"TradeReject strat={self.strategy_name} | reason={validation.reason}")
             return
 
         position_reserved = True
@@ -962,7 +962,7 @@ class StrategyRunner:
                 self.risk_manager.release_position_reservation(reason="meta_labeling_rejected")
                 position_reserved = False
                 logger.info(
-                    f"{self.strategy_name:<9}: TradeCancel reason=meta_confidence "
+                    f"TradeCancel strat={self.strategy_name} | reason=meta_confidence "
                     f"| threshold={self.meta_min_confidence:.3f}"
                 )
                 return
@@ -973,7 +973,7 @@ class StrategyRunner:
             if not result.success:
                 self.risk_manager.release_position_reservation(reason="execution_failed")
                 position_reserved = False
-                logger.error(f"{self.strategy_name:<9}: EntryFail err={result.error_message}")
+                logger.error(f"EntryFail strat={self.strategy_name} | err={result.error_message}")
                 return
 
             execution_submitted = True
@@ -981,7 +981,7 @@ class StrategyRunner:
         finally:
             if position_reserved and not execution_submitted:
                 self.risk_manager.release_position_reservation(reason="exception_during_execution")
-                logger.error(f"{self.strategy_name:<9}: PosSlotRel reason=exception_during_execution")
+                logger.error(f"PosSlotRel strat={self.strategy_name} | reason=exception_during_execution")
 
         trade_id = self._generate_trade_id()
 
@@ -1008,7 +1008,7 @@ class StrategyRunner:
             signal_str = "BUY" if entry_request.signal == 1 else "SELL"
 
         logger.info(
-            f"{self.strategy_name:<9}: ENTRY tid={trade_id} | dir={signal_str} | vol={entry_request.volume:.2f}"
+            f"Entry strat={self.strategy_name} | tid={trade_id} | dir={signal_str} | vol={entry_request.volume:.2f}"
         )
 
     def _process_modify_signals(
@@ -1023,7 +1023,7 @@ class StrategyRunner:
         else:
             loaded = self._load_strategy_positions(mode="cache", include_unknown=False)
             if loaded is None:
-                logger.error(f"{self.strategy_name:<9}: ModifySkip reason=mt5_api_failure")
+                logger.error(f"ModifySkip strat={self.strategy_name} | reason=mt5_api_failure")
                 raise RuntimeError(f"{self.strategy_name}: MT5 positions_get() returned None during modify pass")
             positions = loaded
 
@@ -1040,7 +1040,7 @@ class StrategyRunner:
             elif isinstance(request, ModifyRequest):
                 self._handle_modify_adjustment(request)
             else:
-                logger.warning(f"{self.strategy_name:<9}: UnknownModifyRequest type={type(request).__name__}")
+                logger.warning(f"UnknownModifyRequest strat={self.strategy_name} | type={type(request).__name__}")
 
     def _handle_modify_adjustment(self, request: ModifyRequest) -> None:
         result = self.executor.execute_modify(request)
@@ -1049,11 +1049,9 @@ class StrategyRunner:
             self._patch_tracked_snapshot_levels(ticket=request.ticket, new_sl=request.new_sl, new_tp=request.new_tp)
             sl_str = f"{request.new_sl:.5f}" if request.new_sl is not None else "—"
             tp_str = f"{request.new_tp:.5f}" if request.new_tp is not None else "—"
-            logger.debug(
-                f"{self.strategy_name:<9}: MODIFIED t={request.ticket} | sl={sl_str} tp={tp_str} | {request.comment}"
-            )
+            logger.debug(f"Modify strat={self.strategy_name} | t={request.ticket} | sl={sl_str} tp={tp_str}")
         else:
-            logger.error(f"{self.strategy_name:<9}: ModifyFail t={request.ticket} | err={result.error_message}")
+            logger.error(f"ModifyFail strat={self.strategy_name} | t={request.ticket} | err={result.error_message}")
 
     def _build_fill_data(
         self,
@@ -1128,12 +1126,12 @@ class StrategyRunner:
         self._invalidate_cache_for_ticket(data.ticket)
         updated_position = self._requery_position(data.ticket)
         if updated_position is None:
-            logger.warning(f"{self.strategy_name:<9}: PartCloseQueryFail t={data.ticket}")
+            logger.warning(f"PartCloseQueryFail strat={self.strategy_name} | t={data.ticket}")
             return None
 
         trade_id = self.ticket_to_trade_id.get(data.ticket)
         if trade_id is None:
-            logger.error(f"{self.strategy_name:<9}: PartCloseLogFail t={data.ticket} | reason=no_trade_id")
+            logger.error(f"PartCloseLogFail strat={self.strategy_name} | t={data.ticket} | reason=no_trade_id")
             return None
 
         remaining_volume = updated_position.volume
@@ -1149,7 +1147,7 @@ class StrategyRunner:
             self.entry_metadata[trade_id]["position_snapshot"] = updated_position.to_cache_entry()
 
         logger.info(
-            f"{self.strategy_name:<9}: PARTIAL CLOSE id={trade_id} | t={data.ticket} | "
+            f"PartialClose strat={self.strategy_name} | id={trade_id} | t={data.ticket} | "
             f"closed={data.closed_volume:.2f} | rem={remaining_volume:.2f}"
         )
         return updated_position
@@ -1180,13 +1178,13 @@ class StrategyRunner:
 
         if trade_id is None:
             logger.warning(
-                f"{self.strategy_name:<9}: CLOSED t={ticket} | reason=no_trade_id | "
+                f"Closed strat={self.strategy_name} | t={ticket} | reason=no_trade_id | "
                 f"trigger={data.exit_trigger} | pos={self.local_position_count}/{max_pos}"
             )
             return
 
         logger.info(
-            f"{self.strategy_name:<9}: CLOSED id={trade_id} | t={ticket} | "
+            f"Closed strat={self.strategy_name} | id={trade_id} | t={ticket} | "
             f"trigger={data.exit_trigger} | pos={self.local_position_count}/{max_pos} | "
             f"global={self.global_position_count.value}/{max_pos}"
         )
@@ -1194,7 +1192,7 @@ class StrategyRunner:
     def _resolve_expected_exit_price(self, pos: Position) -> tuple[float, str] | None:
         tick = self._get_cached_symbol_tick(pos.symbol)
         if tick is None:
-            logger.error(f"{self.strategy_name:<9}: ExitPriceFail t={pos.ticket} | reason=tick_unavailable")
+            logger.error(f"ExitPriceFail strat={self.strategy_name} | t={pos.ticket} | reason=tick_unavailable")
             return None
         is_buy: bool = pos.type == PositionType.BUY
         actual: float = tick.bid if is_buy else tick.ask
@@ -1222,18 +1220,18 @@ class StrategyRunner:
         ticket = pos.ticket
         exit_price_result = self._resolve_expected_exit_price(pos)
         if exit_price_result is None:
-            logger.error(f"{self.strategy_name:<9}: ExitPriceFail t={ticket} | ctx={exit_context}")
+            logger.error(f"ExitPriceFail strat={self.strategy_name} | t={ticket} | ctx={exit_context}")
             return
 
         expected_exit_price, price_source = exit_price_result
         logger.debug(
-            f"{self.strategy_name:<9}: ExitPrice t={ticket} | src={price_source} | px={expected_exit_price:.5f}"
+            f"ExitPrice strat={self.strategy_name} | t={ticket} | src={price_source} | px={expected_exit_price:.5f}"
         )
 
         trade_id, expected_entry_price, opening_sl, entry_price = self._resolve_entry_prices(ticket, pos)
         result = self.executor.execute_exit(exit_request)
         if not result.success:
-            logger.error(f"{self.strategy_name:<9}: ExitFail t={ticket} | err={result.error_message}")
+            logger.error(f"ExitFail strat={self.strategy_name} | t={ticket} | err={result.error_message}")
             return
 
         exit_log_data = ExitLogData(
@@ -1262,7 +1260,7 @@ class StrategyRunner:
                 else self._load_strategy_positions(mode="cache", include_unknown=True)
             )
         if positions is None:
-            logger.error(f"{self.strategy_name:<9}: ExitMonFail reason=mt5_api_failure")
+            logger.error(f"ExitMonFail strat={self.strategy_name} | reason=mt5_api_failure")
             return
 
         self._refresh_tracked_position_snapshots(positions)
@@ -1310,18 +1308,18 @@ class StrategyRunner:
         )
         total_cancelled = sum(n for symbol_results in results.values() for n in symbol_results.values())
         if total_cancelled > 0:
-            logger.info(f"{self.strategy_name:<9}: OCOCancel n={total_cancelled}")
+            logger.info(f"OCOCancel strat={self.strategy_name} | n={total_cancelled}")
 
     def _cancel_pending_orders_on_shutdown(self) -> None:
         """Cancel pending orders only — position closing is owned solely by Orchestrator._verify_and_close_remaining."""
         orders = self._get_strategy_orders_direct()
         if orders is None:
-            logger.error(f"{self.strategy_name:<9}: ShutdownRecFail reason=orders_get_failed")
+            logger.error(f"ShutdownRecFail strat={self.strategy_name} | reason=orders_get_failed")
             return
 
         cancelled = sum(1 for order in orders if self.executor.cancel_order(order.ticket))
         if cancelled:
-            logger.info(f"{self.strategy_name:<9}: ShutdownOrd cancelled={cancelled}")
+            logger.info(f"ShutdownOrd strat={self.strategy_name} | cancelled={cancelled}")
 
     def _calculate_next_entry_time(self, from_time: datetime) -> datetime:
         """Calculate next entry time aligned to timeframe boundary from given time."""
