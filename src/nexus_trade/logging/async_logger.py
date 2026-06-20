@@ -17,7 +17,7 @@ class AsyncTradeLogger:
 
     def __init__(self, trade_logger: TradeLogger, max_queue_size: int = 100) -> None:
         self._logger: TradeLogger = trade_logger
-        self._queue: Queue[tuple[str, tuple[LogPayload], dict[str, object]]] = Queue(maxsize=max_queue_size)
+        self._queue: Queue[tuple[str, LogPayload]] = Queue(maxsize=max_queue_size)
         self._shutdown_flag: threading.Event = threading.Event()
         self._state_lock: threading.Lock = threading.Lock()
         self._dropped_count: int = 0
@@ -40,9 +40,9 @@ class AsyncTradeLogger:
             except Empty:
                 continue
 
-            method_name, args, kwargs = item
+            method_name, data = item
             try:
-                getattr(self._logger, method_name)(*args, **kwargs)
+                getattr(self._logger, method_name)(data)
             except Exception as e:
                 logger.error(
                     f"AsyncLogWriteFail strat={self._logger.strategy_name} | m={method_name} | err={e}",
@@ -72,7 +72,7 @@ class AsyncTradeLogger:
                 return
 
             try:
-                self._queue.put_nowait((method_name, (data,), {}))
+                self._queue.put_nowait((method_name, data))
             except Full:
                 self._dropped_count += 1
                 now = time.monotonic()
