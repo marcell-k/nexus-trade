@@ -36,7 +36,7 @@ def _make_entry(ticket: int, symbol: str = "EURUSD", magic: int = 100) -> Positi
         tp=1.11,
         profit=0.0,
         swap=0.0,
-        magic_number=magic,
+        magic=magic,
         time=0,
     )
 
@@ -66,7 +66,7 @@ class TestCacheHit:
         assert positions is not None
         assert len(positions) == 1
         assert positions[0]["symbol"] == "EURUSD"
-        assert positions[0]["magic_number"] == 12345
+        assert positions[0]["magic"] == 12345
 
     def test_filters_by_magic(self, fresh_state: SharedState) -> None:
         e1 = _make_entry(1, magic=100)
@@ -76,7 +76,7 @@ class TestCacheHit:
         result = repo.get_strategy_positions("EURUSD", magic=100, prefer_cache=True)
         assert result is not None
         assert len(result) == 1
-        assert result[0]["magic_number"] == 100
+        assert result[0]["magic"] == 100
 
     def test_known_tickets_filter_applied(self, fresh_state: SharedState) -> None:
         e1 = _make_entry(1)
@@ -124,7 +124,7 @@ class TestCacheMetrics:
 
 
 class TestGetManagedPositions:
-    def test_filters_by_magic_numbers(self, mt5_mock: MagicMock) -> None:
+    def test_filters_by_magics(self, mt5_mock: MagicMock) -> None:
         import sys
 
         RawPos = namedtuple(
@@ -140,7 +140,7 @@ class TestGetManagedPositions:
         result = repo.get_managed_positions(frozenset({100}))
         assert result is not None
         assert len(result) == 1
-        assert result[0]["magic_number"] == 100
+        assert result[0]["magic"] == 100
 
     def test_returns_none_on_api_failure(self, mt5_mock: MagicMock) -> None:
         import sys

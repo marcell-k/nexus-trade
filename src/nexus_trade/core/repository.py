@@ -88,7 +88,7 @@ class PositionRepository:
         return [
             normalized
             for pos in raw
-            if (normalized := Position.from_mt5(pos).to_cache_entry())["magic_number"] in magic_numbers
+            if (normalized := Position.from_mt5(pos).to_cache_entry())["magic"] in magic_numbers
         ]
 
     def get_managed_orders(
@@ -148,7 +148,7 @@ class PositionRepository:
                     return None
 
                 cache_ref: dict[int, PositionCacheEntry] = self._shared_state.get("position_cache", {})
-                result = [pos for pos in cache_ref.values() if pos["magic_number"] == magic and pos["symbol"] == symbol]
+                result = [pos for pos in cache_ref.values() if pos["magic"] == magic and pos["symbol"] == symbol]
 
             logger.debug(f"CacheHit sym={symbol} | m={magic} | n={len(result)} | age={age:.1f}s")
             return result
@@ -169,11 +169,7 @@ class PositionRepository:
             return None
         if not raw:
             return []
-        return [
-            normalized
-            for pos in raw
-            if (normalized := Position.from_mt5(pos).to_cache_entry())["magic_number"] == magic
-        ]
+        return [normalized for pos in raw if (normalized := Position.from_mt5(pos).to_cache_entry())["magic"] == magic]
 
     def cache_age_seconds(self) -> float:
         """Return seconds since the shared position cache was last written."""

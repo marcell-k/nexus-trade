@@ -186,7 +186,7 @@ class Orchestrator:
             logger.info(
                 f"sym={pos['symbol']:<7} | side={side} | "
                 f"vol={pos['volume']:>4.2f} | px={price_display:>10} | "
-                f"m={pos['magic_number']:>3}"
+                f"m={pos['magic']:>3}"
             )
             logger.debug(f"t={pos['ticket']:>10}")
 

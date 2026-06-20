@@ -59,7 +59,7 @@ class PositionCacheEntry(TypedDict):
     tp: float
     profit: float
     swap: float
-    magic_number: int
+    magic: int
     time: int
 
 

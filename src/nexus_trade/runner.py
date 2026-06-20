@@ -795,7 +795,7 @@ class StrategyRunner:
 
         for pending_trade_id in candidate_ids:
             conditions = pending_snapshot.get(pending_trade_id)
-            if conditions is None or conditions.symbol != pos.symbol or conditions.magic != pos.magic_number:
+            if conditions is None or conditions.symbol != pos.symbol or conditions.magic != pos.magic:
                 continue
             if isinstance(conditions, BracketPendingTicket) and self._matches_bracket_conditions(
                 pos, conditions, conditions.submission_time

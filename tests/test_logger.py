@@ -139,7 +139,7 @@ def _make_pos(
         tp=tp,
         profit=0.0,
         swap=0.0,
-        magic_number=magic,
+        magic=magic,
         time=int(time.time()),
     )
 

@@ -704,7 +704,7 @@ class OrderExecutor:
         symbol_set = frozenset(symbols)
         magic_set = frozenset(magics)
         for pos in normalized_positions:
-            sym, mag = pos["symbol"], pos["magic_number"]
+            sym, mag = pos["symbol"], pos["magic"]
             if sym in symbol_set and mag in magic_set:
                 side = "BUY" if pos["type"] == mt.POSITION_TYPE_BUY else "SELL"
                 position_groups[(sym, mag)][side].append(pos)

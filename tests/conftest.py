@@ -207,7 +207,7 @@ def make_position_cache_entry() -> Callable[..., PositionCacheEntry]:
             tp=tp,
             profit=profit,
             swap=swap,
-            magic_number=magic,
+            magic=magic,
             time=time,
         )
 

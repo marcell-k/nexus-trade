@@ -26,7 +26,7 @@ class Position:
     ticket: int
     symbol: str
     type: PositionType
-    magic_number: int
+    magic: int
     volume: float
     price_open: float
     sl: float | None
@@ -44,7 +44,7 @@ class Position:
             ticket=int(getattr(pos, "ticket", 0)),
             symbol=str(getattr(pos, "symbol", "")),
             type=PositionType.from_int(int(getattr(pos, "type", 0))),
-            magic_number=int(getattr(pos, "magic", 0)),
+            magic=int(getattr(pos, "magic", 0)),
             volume=float(getattr(pos, "volume", 0.0)),
             price_open=float(getattr(pos, "price_open", 0.0)),
             sl=raw_sl if raw_sl != 0.0 else None,
@@ -65,7 +65,7 @@ class Position:
             tp=self.tp if self.tp is not None else 0.0,
             profit=self.profit,
             swap=self.swap,
-            magic_number=self.magic_number,
+            magic=self.magic,
             time=self.time,
         )
 
@@ -168,7 +168,7 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
         ticket=entry["ticket"],
         symbol=entry["symbol"],
         type=PositionType.from_int(entry["type"]),
-        magic_number=entry["magic_number"],
+        magic=entry["magic"],
         volume=entry["volume"],
         price_open=entry["price_open"],
         sl=entry["sl"] if entry["sl"] != 0.0 else None,
