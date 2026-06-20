@@ -439,7 +439,7 @@ class Orchestrator:
         last_refresh_ts: float = float(self.shared_state.get("drawdown_last_refresh", 0.0))
         is_full_rescan = last_refresh_ts == 0.0
         query_start = (
-            SYSTEM_TIMINGS.drawdown_history_start
+            self._profile.account.history_start
             if is_full_rescan
             else datetime.fromtimestamp(last_refresh_ts, tz=self.account_config.broker_tz)
         )

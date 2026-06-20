@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import tomllib
+from datetime import datetime
 from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
@@ -58,6 +59,7 @@ class LimitsCfg(FrozenModel):
 class AccountCfg(FrozenModel):
     type: str = Field(min_length=1)
     initial_balance: int = Field(gt=0)
+    history_start: datetime = Field(default=datetime(2025, 1, 1))
 
 
 class RiskProfile(FrozenModel):

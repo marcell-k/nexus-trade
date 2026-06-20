@@ -7,6 +7,8 @@
 type            = "EXAMPLE"
 # Reference balance for position-size calculations.
 initial_balance = 100_000
+history_start   = "2025-01-01"
+
 
 # ── Global limits ─────────────────────────────────────────────
 [limits]
