@@ -16,7 +16,7 @@ import pytest
 
 from nexus_trade.core.types import PositionCacheEntry
 from nexus_trade.execution.request import CloseData, FillData
-from nexus_trade.logging.async_logger import TradeLogger
+from nexus_trade.logging.trade_logger import TradeLogger
 
 if TYPE_CHECKING:
     from pathlib import Path
