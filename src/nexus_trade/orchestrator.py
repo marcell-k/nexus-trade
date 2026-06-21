@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ctypes
-import importlib
 import logging
 import time
 from datetime import datetime, timedelta
@@ -17,6 +16,7 @@ import numpy as np
 from nexus_trade.config.profile import MetaLabelingConfig, RiskProfile
 from nexus_trade.config.timings import GRACE_SECONDS, SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
+from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.repository import PositionRepository
 from nexus_trade.core.types import StrategyRiskConfig
 from nexus_trade.execution.executor import OrderExecutor
@@ -212,8 +212,7 @@ class Orchestrator:
         for strategy_name in self._profile.enabled_strategy_names:
             config_module_path = f"nexus_trade.strategies.{strategy_name}.config"
             try:
-                config_module = importlib.import_module(config_module_path)
-                config: StrategyConfig[BaseStrategyParams] = config_module.get_config()
+                config: StrategyConfig[BaseStrategyParams] = STRATEGY_CONFIG_REGISTRY.get_strategy_config(strategy_name)
                 self.strategy_configs[strategy_name] = config
                 params = config.params
                 logger.debug(f"StratDisc name={strategy_name} | sym={params.symbol} | tf={params.timeframe}")
