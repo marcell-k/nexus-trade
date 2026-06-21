@@ -685,8 +685,13 @@ class OrderExecutor:
         magics: list[int],
         preloaded_positions: list[PositionCacheEntry] | None = None,
         preloaded_orders: list[OrderSnapshot] | None = None,
-    ) -> dict[str, dict[int, int]]:
-        """Cancel opposite bracket leg after one side fills. Handles dual-fill by closing both."""
+    ) -> tuple[dict[str, dict[int, int]], set[int]]:
+        """Cancel opposite bracket leg after one side fills. Handles dual-fill by closing both.
+
+        Returns (cancelled_order_counts, dual_fill_closed_tickets) — the second element lets
+        the caller label positions closed by dual-fill cleanup distinctly from genuine
+        external closes.
+        """
         if preloaded_positions is not None:
             normalized_positions = preloaded_positions
         else:
@@ -699,7 +704,7 @@ class OrderExecutor:
 
         empty: dict[str, dict[int, int]] = {s: dict.fromkeys(magics, 0) for s in symbols}
         if not normalized_positions or not normalized_orders:
-            return empty
+            return empty, set()
 
         position_groups: dict[tuple[str, int], dict[str, list[PositionCacheEntry]]] = defaultdict(
             lambda: {"BUY": [], "SELL": []}
@@ -712,7 +717,7 @@ class OrderExecutor:
                 side = "BUY" if pos["type"] == mt.POSITION_TYPE_BUY else "SELL"
                 position_groups[(sym, mag)][side].append(pos)
 
-        dual_fill_keys = self._resolve_dual_fills(position_groups)
+        dual_fill_keys, dual_fill_closed_tickets = self._resolve_dual_fills(position_groups)
 
         dual_cancelled = sum(
             1
@@ -731,7 +736,7 @@ class OrderExecutor:
             if (sym, mag) not in dual_fill_keys and (grp["BUY"] or grp["SELL"])
         }
         if not position_map:
-            return empty
+            return empty, dual_fill_closed_tickets
 
         results: dict[str, dict[int, int]] = {s: dict.fromkeys(magics, 0) for s in symbols}
         for o in normalized_orders:
@@ -751,12 +756,13 @@ class OrderExecutor:
                     f"OCOCancel sym={o.symbol} | m={o.magic} | ot={o.type} | t={o.ticket} | "
                     f"filled={'B' if pos_type == mt.POSITION_TYPE_BUY else 'S'}"
                 )
-        return results
+        return results, dual_fill_closed_tickets
 
     def _resolve_dual_fills(
         self, position_groups: dict[tuple[str, int], dict[str, list[PositionCacheEntry]]]
-    ) -> set[tuple[str, int]]:
+    ) -> tuple[set[tuple[str, int]], set[int]]:
         dual_keys: set[tuple[str, int]] = set()
+        closed_tickets: set[int] = set()
         for (symbol, magic), group in position_groups.items():
             if group["BUY"] and group["SELL"]:
                 logger.warning(
@@ -764,13 +770,14 @@ class OrderExecutor:
                 )
                 all_tickets = [p["ticket"] for p in group["BUY"] + group["SELL"]]
                 close_results = self.close_positions(tickets=all_tickets)
-                closed = sum(1 for ok, _ in close_results.values() if ok)
+                closed = [t for t, (ok, _) in close_results.items() if ok]
                 if closed:
-                    logger.info(f"DualFillResolved sym={symbol} | m={magic} | closed={closed}/{len(all_tickets)}")
+                    logger.info(f"DualFillResolved sym={symbol} | m={magic} | closed={len(closed)}/{len(all_tickets)}")
+                    closed_tickets.update(closed)
                 else:
                     logger.error(f"DualFillCloseFail sym={symbol} | m={magic}")
                 dual_keys.add((symbol, magic))
-        return dual_keys
+        return dual_keys, closed_tickets
 
     def _recover_close_deal_id(
         self,

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 # runner
 SL_TP_SNAP_TOLERANCE: float = 0.001
 BREAKEVEN_HALF_BAND_RATIO: float = 0.0005
-BRACKET_EXPIRY_GRACE_SECONDS: int = 30
+PENDING_ORDER_EXPIRY_GRACE_SECONDS: int = 30
 
 # orchestrator
 GRACE_SECONDS = 90

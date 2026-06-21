@@ -17,9 +17,9 @@ import MetaTrader5 as mt
 import numpy as np
 
 from nexus_trade.config.timings import (
-    BRACKET_EXPIRY_GRACE_SECONDS,
     BREAKEVEN_HALF_BAND_RATIO,
     MAX_QUEUE_SIZE,
+    PENDING_ORDER_EXPIRY_GRACE_SECONDS,
     SL_TP_SNAP_TOLERANCE,
     SYSTEM_TIMINGS,
 )
@@ -358,6 +358,9 @@ class StrategyRunner:
 
     def _has_pending_bracket_orders(self) -> bool:
         return any(isinstance(pending, BracketPendingTicket) for pending in self.pending_tickets.values())
+
+    def _has_pending_orders(self) -> bool:
+        return bool(self.pending_tickets)
 
     def _seed_startup_position_tracking(
         self,
@@ -819,13 +822,21 @@ class StrategyRunner:
         )
         return pending_trade_id
 
-    def _check_expired_bracket_orders(
+    @staticmethod
+    def _pending_order_tickets(pending: PendingTicket) -> tuple[int, ...]:
+        if isinstance(pending, BracketPendingTicket):
+            return tuple(t for t in (pending.buy_order_ticket, pending.sell_order_ticket) if t)
+        return (pending.ticket,)
+
+    def _check_expired_pending_orders(
         self, current_tickets: set[int], orders: list[OrderSnapshot] | None = None
     ) -> None:
-        bracket_pending: dict[int, BracketPendingTicket] = {
-            tid: pending for tid, pending in self.pending_tickets.items() if isinstance(pending, BracketPendingTicket)
-        }
-        if not bracket_pending:
+        """Release reserved position slots for pending orders MT5 no longer shows as live.
+
+        Applies to bracket (OCO) and standard (stop/limit) pending tickets alike — neither has
+        any other mechanism to detect broker-side cancellation or expiry of an unfilled order.
+        """
+        if not self.pending_tickets:
             return
 
         if orders is None:
@@ -834,29 +845,29 @@ class StrategyRunner:
 
         composite_key = self._get_composite_key()
 
-        for trade_id, pending in bracket_pending.items():
-            buy_ticket = pending.buy_order_ticket
-            sell_ticket = pending.sell_order_ticket
+        for trade_id, pending in list(self.pending_tickets.items()):
+            tickets = self._pending_order_tickets(pending)
 
-            if (buy_ticket and buy_ticket in current_tickets) or (sell_ticket and sell_ticket in current_tickets):
+            if any(t in current_tickets for t in tickets):
                 continue
 
             already_resolved = self._trade_id_refcount.get(trade_id, 0) > 0
             if already_resolved:
                 continue
 
-            if (buy_ticket and buy_ticket in order_tickets) or (sell_ticket and sell_ticket in order_tickets):
+            if any(t in order_tickets for t in tickets):
                 continue
 
             elapsed = time.time() - pending.submission_time
-            if elapsed < BRACKET_EXPIRY_GRACE_SECONDS:
+            if elapsed < PENDING_ORDER_EXPIRY_GRACE_SECONDS:
                 continue
 
+            kind = "bracket" if isinstance(pending, BracketPendingTicket) else "standard"
             logger.warning(
-                f"BracketExpired strat={self.strategy_name} | "
-                f"elapsed={elapsed:.0f}s | buy_t={buy_ticket} | sell_t={sell_ticket}"
+                f"PendingOrderExpired strat={self.strategy_name} | kind={kind} | "
+                f"elapsed={elapsed:.0f}s | tickets={tickets}"
             )
-            self.risk_manager.release_position_reservation(reason="bracket_expired")
+            self.risk_manager.release_position_reservation(reason="pending_order_expired")
             self._cleanup_pending(trade_id, composite_key)
             self.entry_metadata.pop(trade_id, None)
 
@@ -1301,7 +1312,7 @@ class StrategyRunner:
         self._refresh_tracked_position_snapshots(positions)
         current_tickets: set[int] = {pos["ticket"] for pos in positions}
 
-        mt5_orders = self._get_strategy_orders_direct() if self._has_pending_bracket_orders() else None
+        mt5_orders = self._get_strategy_orders_direct() if self._has_pending_orders() else None
 
         known_snapshot = set(self.known_positions)
 
@@ -1309,7 +1320,7 @@ class StrategyRunner:
         if closed_tickets:
             self._handle_closed_positions(closed_tickets)
 
-        self._check_expired_bracket_orders(current_tickets, orders=mt5_orders)
+        self._check_expired_pending_orders(current_tickets, orders=mt5_orders)
 
         if not positions or data.empty:
             return
@@ -1335,13 +1346,13 @@ class StrategyRunner:
     def _cancel_opposite_bracket_orders(
         self, positions: list[PositionCacheEntry] | None = None, mt5_orders: list[OrderSnapshot] | None = None
     ) -> None:
-        results = self.executor.cancel_bracket_orders(
+        cancelled_order_counts, _dual_fill_closed_tickets = self.executor.cancel_bracket_orders(
             symbols=[self.symbol],
             magics=[self.magic_number],
             preloaded_positions=positions,
             preloaded_orders=mt5_orders,
         )
-        total_cancelled = sum(n for symbol_results in results.values() for n in symbol_results.values())
+        total_cancelled = sum(n for symbol_results in cancelled_order_counts.values() for n in symbol_results.values())
         if total_cancelled > 0:
             logger.info(f"OCOCancel strat={self.strategy_name} | n={total_cancelled}")
 
