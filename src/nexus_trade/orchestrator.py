@@ -575,6 +575,9 @@ class Orchestrator:
         with self.global_trade_count.get_lock():
             self.global_trade_count.value = 0
 
+        logger.debug("ShutdownPhase n=6 | step=close_trade_id_db")
+        self.trade_id_manager.close()
+
         log_section_header(logger, "SHUTDOWN COMPLETE", level=logging.DEBUG)
 
     def _force_close_all_immediate(
