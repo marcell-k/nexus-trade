@@ -5,6 +5,7 @@ from __future__ import annotations
 import tomllib
 from datetime import datetime
 from typing import TYPE_CHECKING, Literal
+from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -59,7 +60,18 @@ class LimitsCfg(FrozenModel):
 class AccountCfg(FrozenModel):
     type: str = Field(min_length=1)
     initial_balance: int = Field(gt=0)
-    history_start: datetime = Field(default=datetime(2025, 1, 1))
+    history_start: datetime = Field(default=datetime(2025, 1, 1, tzinfo=ZoneInfo("UTC")))
+
+    @field_validator("history_start", mode="before")
+    @classmethod
+    def _ensure_aware(cls, v: object) -> datetime:
+        if isinstance(v, str):
+            dt = datetime.fromisoformat(v)
+        elif isinstance(v, datetime):
+            dt = v
+        else:
+            raise TypeError(f"history_start must be datetime or ISO-8601 string, got {type(v).__name__}")
+        return dt if dt.tzinfo is not None else dt.replace(tzinfo=ZoneInfo("UTC"))
 
 
 class RiskProfile(FrozenModel):
