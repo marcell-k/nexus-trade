@@ -111,9 +111,7 @@ class NewsFilter:
         self.broker_tz: ZoneInfo = self.data_handler.broker_tz
         self.calendar_path = self.data_handler.calendar_path
         cfg = STRATEGY_CONFIG_REGISTRY.get_strategy_config(self.strategy_name)
-        th = cfg.trading_hours
-        tz_name: str = th.timezone or cfg.params.timezone
-        self.strategy_tz: ZoneInfo = ZoneInfo(tz_name) if tz_name else self.broker_tz
+        self.strategy_tz: ZoneInfo = ZoneInfo(cfg.effective_timezone)
         self.symbol: str = cfg.params.symbol
         self.enabled: bool = cfg.filters.news.enabled
         self.filter_currencies: set[str] = set(cfg.filters.news.currencies)

@@ -38,9 +38,7 @@ class StrategyConfigRegistry:
         with self._lock:
             if strategy_name not in self._tzs:
                 cfg = self.get_strategy_config(strategy_name)
-                th = cfg.trading_hours
-                tz_name: str = th.timezone or cfg.params.timezone or "UTC"
-                self._tzs[strategy_name] = ZoneInfo(tz_name)
+                self._tzs[strategy_name] = ZoneInfo(cfg.effective_timezone)
             return self._tzs[strategy_name]
 
     def get_timeframe_minutes(self, strategy_name: str) -> int:

@@ -134,8 +134,7 @@ class StrategyRunner:
         self.timeframe_mt5: TimeFrame = TIMEFRAME_STRING_MAP[self.timeframe.upper()]
         self.magic_number: int = self.config.execution.magic_number
         self.order_type: StrategyOrderType = self.config.order_type
-        _th = self.config.trading_hours
-        self.strategy_tz: str = _th.timezone or params.timezone
+        self.strategy_tz: str = self.config.effective_timezone
         self.broker_tz: ZoneInfo = self.broker_config.broker_tz
 
         sync_logger = TradeLogger(

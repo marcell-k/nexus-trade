@@ -82,6 +82,12 @@ class StrategyConfig[T_Params: BaseStrategyParams](FrozenModel):
     def strategy_module(self) -> str:
         return f"nexus_trade.strategies.{self.name}.strategy"
 
+    @computed_field
+    @property
+    def effective_timezone(self) -> str:
+        """Trading-hours timezone, falling back to params timezone, then UTC."""
+        return self.trading_hours.timezone or self.params.timezone or "UTC"
+
     @classmethod
     def build(
         cls,
