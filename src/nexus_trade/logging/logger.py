@@ -515,15 +515,13 @@ class TradeLogger:
         entry_filter: int | None = None,
     ) -> list[TradeDeal] | None:
         """Retrieve history deals for a ticket with bounded retry backoff."""
-        for attempt in range(max_retries):
+        for _ in range(max_retries):
             deals = mt.history_deals_get(position=ticket)
             if deals and len(deals) > 0:
                 deal_list: list[TradeDeal] = list(deals)
                 if entry_filter is not None:
-                    deal_list = [deal for deal in deals if getattr(deal, "entry", None) == entry_filter]
+                    deal_list = [d for d in deals if getattr(d, "entry", None) == entry_filter]
                 return deal_list
-            if attempt < max_retries - 1:
-                time.sleep(0.1 * (attempt + 1))
         logger.error(f"DealsFetchFail ctx={context} | t={ticket} | reason=no_deals")
         return None
 
