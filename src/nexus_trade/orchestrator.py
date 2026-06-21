@@ -155,9 +155,11 @@ class Orchestrator:
         """Atomically write positions into the shared position cache."""
         cache_dict = {entry["ticket"]: entry for entry in positions}
         with self.position_cache_lock:
-            shared_cache: dict[int, PositionCacheEntry] = cast(
-                "dict[int, PositionCacheEntry]", self.shared_state.get("position_cache") or self.manager.dict()
-            )
+            cache = self.shared_state.get("position_cache")
+            if cache is None:
+                cache = self.manager.dict()
+
+            shared_cache = cast("dict[int, PositionCacheEntry]", cache)
             stale = [t for t in list(shared_cache.keys()) if t not in cache_dict]
             for t in stale:
                 shared_cache.pop(t, None)

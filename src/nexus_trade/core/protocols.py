@@ -39,19 +39,6 @@ class StrategyProtocol(Protocol):
     def generate_modify_signal(self, pos: Position, data: pd.DataFrame) -> ModifyRequestResult: ...
 
 
-class _AtomicLock(Protocol):
-    def acquire(self, block: bool = ..., timeout: float = ...) -> bool: ...
-    def release(self) -> None: ...
-    def __enter__(self) -> bool: ...
-    def __exit__(
-        self,
-        exc_type: type[BaseException] | None,
-        exc_val: BaseException | None,
-        exc_tb: TracebackType | None,
-        /,
-    ) -> None: ...
-
-
 class ProcessLock(Protocol):
     def acquire(self, block: bool = True, timeout: float = -1) -> bool: ...
     def release(self) -> None: ...
@@ -70,19 +57,13 @@ class AtomicInt(Protocol):
 
     value: int
 
-    def get_lock(self) -> _AtomicLock: ...
+    def get_lock(self) -> ProcessLock: ...
 
 
 class SupportsPredictProba(Protocol):
     """Protocol for models returning class probabilities."""
 
     def predict_proba(self, X: pd.DataFrame) -> np.ndarray: ...
-
-
-class SupportsPredict(Protocol):
-    """Protocol for models returning direct mappings (Isotonic)."""
-
-    def predict(self, X: pd.DataFrame) -> np.ndarray: ...
 
 
 class ClassifierWithProba(SupportsPredictProba, Protocol):
