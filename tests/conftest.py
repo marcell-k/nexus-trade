@@ -150,7 +150,7 @@ _PATCH_TARGETS: tuple[str, ...] = (
     "nexus_trade.core.symbol.mt",
     "nexus_trade.core.constants.mt",
     "nexus_trade.filters.costs.mt",
-    "nexus_trade.logging.logger.mt",
+    "nexus_trade.logging.trade_logger.mt",
     "nexus_trade.risk.manager.mt",
     "nexus_trade.execution.executor.mt",
 )

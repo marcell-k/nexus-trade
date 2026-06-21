@@ -20,7 +20,6 @@ if TYPE_CHECKING:
 BROKER_TZ = ZoneInfo("Etc/GMT-3")
 STRATEGY_TZ = ZoneInfo("UTC")
 
-# Type values must match what preprocess_calendar_file accepts — INDICATOR/EVENT/HOLIDAY
 VALID_CSV = textwrap.dedent("""\
     Date,Time,Currency,Event,Impact,Type
     2025.06.16,14:30,USD,Non-Farm Payrolls,HIGH,INDICATOR
@@ -93,6 +92,7 @@ def _build_news_filter(
         cfg.filters.news.currencies = currencies or ["USD"]
         cfg.filters.news.buffer_minutes = buffer_minutes
         cfg.trading_hours = TradingHoursConfig(enabled=False)
+        cfg.effective_timezone = "UTC"
         reg.get_strategy_config.return_value = cfg
 
         nf = NewsFilter(data_handler=dh, strategy_name="test")

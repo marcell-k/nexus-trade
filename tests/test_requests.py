@@ -27,13 +27,22 @@ class TestEntryRequestValidation:
         assert req.signal == 1
 
     def test_valid_bracket_signal(self) -> None:
-        req = EntryRequest(**self._valid(order_type="bracket", signal=2))
+        req = EntryRequest(
+            **self._valid(
+                order_type="bracket", signal=2, buy_stop=1.10500, sell_stop=1.09500, buy_sl=1.10000, sell_sl=1.10000
+            )
+        )
         assert req.signal == 2
 
     @pytest.mark.parametrize("order_type", ["limit", "stop", "bracket"])
     def test_valid_order_types(self, order_type: str) -> None:
         sig = 2 if order_type == "bracket" else 1
-        EntryRequest(**self._valid(order_type=order_type, signal=sig))
+        extra: dict = (
+            {"buy_stop": 1.10500, "sell_stop": 1.09500, "buy_sl": 1.10000, "sell_sl": 1.10000}
+            if order_type == "bracket"
+            else {}
+        )
+        EntryRequest(**self._valid(order_type=order_type, signal=sig, **extra))
 
     def test_invalid_order_type_raises(self) -> None:
         with pytest.raises(ValueError, match="Invalid order_type"):
