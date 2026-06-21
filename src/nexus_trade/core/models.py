@@ -19,6 +19,13 @@ if TYPE_CHECKING:
 _CFG = ConfigDict(frozen=True, strict=True, extra="forbid")
 
 
+def coerce_protective_level(value: float | None) -> float | None:
+    """Treat the MT5 unset-SL/TP sentinel (``0.0``) as ``None``; pass ``None`` through unchanged."""
+    if value is None:
+        return None
+    return None if value == 0.0 else value
+
+
 @dataclass(slots=True, config=_CFG)
 class Position:
     """Position snapshot."""
@@ -47,8 +54,8 @@ class Position:
             magic=int(getattr(pos, "magic", 0)),
             volume=float(getattr(pos, "volume", 0.0)),
             price_open=float(getattr(pos, "price_open", 0.0)),
-            sl=raw_sl if raw_sl != 0.0 else None,
-            tp=raw_tp if raw_tp != 0.0 else None,
+            sl=coerce_protective_level(raw_sl),
+            tp=coerce_protective_level(raw_tp),
             profit=float(getattr(pos, "profit", 0.0)),
             swap=float(getattr(pos, "swap", 0.0)),
             time=int(getattr(pos, "time", 0)),
@@ -124,8 +131,8 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
         magic=entry["magic"],
         volume=entry["volume"],
         price_open=entry["price_open"],
-        sl=entry["sl"] if entry["sl"] != 0.0 else None,
-        tp=entry["tp"] if entry["tp"] != 0.0 else None,
+        sl=coerce_protective_level(entry["sl"]),
+        tp=coerce_protective_level(entry["tp"]),
         profit=entry["profit"],
         swap=entry["swap"],
         time=entry["time"],

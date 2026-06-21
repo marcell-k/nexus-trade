@@ -22,7 +22,7 @@ import pandas as pd
 from MetaTrader5 import TradeDeal
 
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
-from nexus_trade.core.models import Position
+from nexus_trade.core.models import Position, coerce_protective_level
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
 from nexus_trade.core.types import PositionCacheEntry, PositionType, ReconciledTrade
 from nexus_trade.execution.request import CloseData, FillData, PartialCloseData
@@ -467,19 +467,12 @@ class TradeLogger:
         direction_multiplier = 1 if position_type == 0 else -1
         return direction_multiplier * raw_spread
 
-    @staticmethod
-    def _normalize_protective_level(level: float | None) -> float | None:
-        """Normalize protective level by treating sentinel zeros as missing."""
-        if level is None:
-            return None
-        return None if abs(level) <= 1e-12 else level
-
     def _infer_expected_exit_price_from_cache(
         self, position: PositionCacheEntry, actual_exit_price: float
     ) -> float | None:
         """Infer expected exit price from position SL/TP if not provided."""
-        normalized_sl = self._normalize_protective_level(position.get("sl"))
-        normalized_tp = self._normalize_protective_level(position.get("tp"))
+        normalized_sl = coerce_protective_level(position.get("sl"))
+        normalized_tp = coerce_protective_level(position.get("tp"))
 
         if normalized_sl is not None:
             sl_distance = abs(position["price_open"] - normalized_sl)
