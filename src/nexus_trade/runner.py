@@ -721,6 +721,7 @@ class StrategyRunner:
         self._trade_id_refcount[trade_id] = self._trade_id_refcount.get(trade_id, 0) + 1
 
         new_trades = self.atomic_increment_trade()
+        self._increment_daily_trade_count()
 
         position_snapshot = pos.to_cache_entry()
         metadata["position_snapshot"] = position_snapshot
@@ -864,6 +865,11 @@ class StrategyRunner:
         with self.global_trade_count.get_lock():
             self.global_trade_count.value += 1
             return self.global_trade_count.value
+
+    def _increment_daily_trade_count(self) -> None:
+        """Increment this strategy's entry in the shared per-strategy daily trade counter."""
+        counts: dict[str, int] = self.shared_state["daily_trade_counts"]
+        counts[self.strategy_name] = counts.get(self.strategy_name, 0) + 1
 
     def _atomic_decrement_global_positions(self, count: int, reason: str) -> int:
         if count <= 0:
