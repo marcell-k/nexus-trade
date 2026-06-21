@@ -8,6 +8,7 @@ import MetaTrader5 as mt
 import numpy as np
 import pandas as pd
 
+from nexus_trade.config.timings import LOOKBACK, TOLERANCE_SECONDS
 from nexus_trade.core.constants import TIMEFRAME_TO_MINUTES, TimeFrame, string_to_timeframe
 from nexus_trade.core.models import Tick
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
@@ -17,9 +18,6 @@ if TYPE_CHECKING:
     from zoneinfo import ZoneInfo
 
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
-
-TOLERANCE_SECONDS = 2
-LOOKBACK = 5
 
 
 @dataclass(slots=True)

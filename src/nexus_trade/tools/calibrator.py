@@ -688,7 +688,7 @@ class ProbabilityCalibrator:
         """Load calibrator from state directory (JSON config + joblib models)."""
         # Load state
         state_path = Path(input_dir) / "calibrator_state.json"
-        if Path(state_path).exists():
+        if not Path(state_path).exists():
             raise FileNotFoundError(f"Calibrator state not found: {state_path}")
 
         with Path.open(state_path) as f:

@@ -78,30 +78,6 @@ class Position:
         )
 
 
-@dataclass(slots=True, frozen=True)
-class _PendingBase:
-    symbol: str
-    magic: int
-    submission_time: float
-
-
-@dataclass(slots=True, frozen=True)
-class StandardPendingTicket(_PendingBase):
-    ticket: int
-
-
-@dataclass(slots=True, frozen=True)
-class BracketPendingTicket(_PendingBase):
-    buy_order_ticket: int
-    sell_order_ticket: int
-    expected_volume: float
-    buy_stop: float
-    sell_stop: float
-
-
-type PendingTicket = StandardPendingTicket | BracketPendingTicket
-
-
 @dataclass(slots=True, config=_CFG)
 class Tick:
     time: int  # seconds in broker TZ
@@ -154,20 +130,6 @@ def cache_entry_to_position(entry: PositionCacheEntry) -> Position:
         swap=entry["swap"],
         time=entry["time"],
     )
-
-
-@dataclass(slots=True)
-class ExitLogData:
-    """Parameters for exit logging operations."""
-
-    ticket: int
-    expected_exit_price: float
-    exit_trigger: str
-    expected_entry_price: float
-    opening_sl: float
-    entry_price: float
-    closed_volume: float | None = None
-    deal_id: int | None = None
 
 
 def normalize_order(order: object) -> OrderSnapshot:

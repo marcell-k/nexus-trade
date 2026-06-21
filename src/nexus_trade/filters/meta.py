@@ -73,7 +73,7 @@ def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callabl
         return None
 
     try:
-        module = importlib.import_module(f"strategies.{strategy_name}.features")
+        module = importlib.import_module(f"nexus_trade.strategies.{strategy_name}.features")
     except Exception as error:
         logger.warning(f"{strategy_name}: Failed to import features module | err={error}")
         return None

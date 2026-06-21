@@ -16,7 +16,7 @@ import MetaTrader5 as mt
 import numpy as np
 
 from nexus_trade.config.profile import MetaLabelingCfg, RiskProfile
-from nexus_trade.config.timings import SYSTEM_TIMINGS
+from nexus_trade.config.timings import GRACE_SECONDS, SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.repository import PositionRepository
 from nexus_trade.core.types import StrategyRiskConfig
@@ -281,8 +281,6 @@ class Orchestrator:
 
     def _reconcile_position_counter(self, actual_count: int) -> None:
         """Correct global_position_count after 90 s of persistent drift."""
-        _GRACE_SECONDS = 90
-
         with self.global_position_count.get_lock():
             current_count = self.global_position_count.value
 
@@ -303,7 +301,7 @@ class Orchestrator:
         if self._drift_first_seen is None:
             self._drift_first_seen = now
 
-        if now - self._drift_first_seen < _GRACE_SECONDS:
+        if now - self._drift_first_seen < GRACE_SECONDS:
             return
 
         with self.global_position_count.get_lock():

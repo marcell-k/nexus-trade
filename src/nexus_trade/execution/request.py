@@ -3,8 +3,33 @@ from dataclasses import dataclass
 from typing import get_args
 
 from nexus_trade.config.strategy import StrategyOrderType
+from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry
 
 VALID_ORDER_TYPES: frozenset[str] = frozenset(get_args(StrategyOrderType))
+
+
+@dataclass(slots=True, frozen=True)
+class _PendingBase:
+    symbol: str
+    magic: int
+    submission_time: float
+
+
+@dataclass(slots=True, frozen=True)
+class StandardPendingTicket(_PendingBase):
+    ticket: int
+
+
+@dataclass(slots=True, frozen=True)
+class BracketPendingTicket(_PendingBase):
+    buy_order_ticket: int
+    sell_order_ticket: int
+    expected_volume: float
+    buy_stop: float
+    sell_stop: float
+
+
+type PendingTicket = StandardPendingTicket | BracketPendingTicket
 
 
 @dataclass
@@ -112,3 +137,60 @@ class ExecutionResult:
 
 
 type ModifyRequestResult = ModifyRequest | ExitRequest | None
+
+
+@dataclass
+class FillData:
+    """Trade fill parameters."""
+
+    trade_id: int
+    position: PositionCacheEntry
+    expected_entry_price: float
+    strategy_name: str
+    opening_sl: float | None = None
+    fill_time_ms: float | None = None
+    volume_multiplier: float | None = None
+
+
+@dataclass(slots=True)
+class CloseData:
+    """Trade close parameters."""
+
+    trade_id: int
+    position: PositionCacheEntry
+    expected_exit_price: float | None
+    opening_sl: float | None
+    exit_trigger: str
+    entry_price: float
+    expected_entry_price: float | None
+
+
+@dataclass(slots=True)
+class PartialCloseData:
+    """Partial close parameters."""
+
+    trade_id: int
+    position: PartialClosePositionSnapshot
+    closed_volume: float
+    remaining_volume: float
+    expected_exit_price: float | None
+    opening_sl: float
+    strategy_name: str
+    exit_trigger: str
+    entry_price: float
+    expected_entry_price: float
+    deal_id: int | None = None
+
+
+@dataclass(slots=True)
+class ExitLogData:
+    """Parameters for exit logging operations."""
+
+    ticket: int
+    expected_exit_price: float
+    exit_trigger: str
+    expected_entry_price: float
+    opening_sl: float
+    entry_price: float
+    closed_volume: float | None = None
+    deal_id: int | None = None

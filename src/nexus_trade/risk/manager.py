@@ -213,7 +213,7 @@ class RiskManager:
         if self.global_trade_count.value >= self.global_policy["max_daily_trades"]:
             return ValidationResult(False, "Daily trade limit reached")
 
-        if not self._drawdown_cache.is_valid(SYSTEM_TIMINGS.drawdown_refresh_interval_seconds):
+        if not self._drawdown_cache.is_valid(SYSTEM_TIMINGS.drawdown_cache_ttl_seconds):
             self._drawdown_cache.set(
                 (
                     float(self.shared_state["daily_drawdown"]),

@@ -4,6 +4,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+# runner
+SL_TP_SNAP_TOLERANCE: float = 0.001
+BREAKEVEN_HALF_BAND_RATIO: float = 0.0005
+BRACKET_EXPIRY_GRACE_SECONDS: int = 30
+
+# orchestrator
+GRACE_SECONDS = 90
+
+# data handler
+LOOKBACK = 5
+TOLERANCE_SECONDS = 2
+
+# async logger
+MAX_QUEUE_SIZE = 100
+
 
 @dataclass(frozen=True, slots=True)
 class SystemTimings:
@@ -11,6 +26,7 @@ class SystemTimings:
     heartbeat_log_interval: int
     cache_staleness_threshold: int
     drawdown_refresh_interval_seconds: int
+    drawdown_cache_ttl_seconds: int
     max_strategy_offset_slots: int
     strategy_offset_divisor: float
     symbol_spec_cache_ttl_seconds: float
@@ -26,6 +42,7 @@ SYSTEM_TIMINGS = SystemTimings(
     heartbeat_log_interval=900,
     cache_staleness_threshold=60,
     drawdown_refresh_interval_seconds=30,
+    drawdown_cache_ttl_seconds=10,
     max_strategy_offset_slots=6,
     strategy_offset_divisor=40.0,
     symbol_spec_cache_ttl_seconds=300.0,

@@ -16,16 +16,18 @@ from typing import TYPE_CHECKING, Literal, cast
 import MetaTrader5 as mt
 import numpy as np
 
-from nexus_trade.config.timings import SYSTEM_TIMINGS
+from nexus_trade.config.timings import (
+    BRACKET_EXPIRY_GRACE_SECONDS,
+    BREAKEVEN_HALF_BAND_RATIO,
+    MAX_QUEUE_SIZE,
+    SL_TP_SNAP_TOLERANCE,
+    SYSTEM_TIMINGS,
+)
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES, TimeFrame
 from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.core.models import (
-    BracketPendingTicket,
-    ExitLogData,
-    PendingTicket,
     Position,
-    StandardPendingTicket,
     cache_entry_to_position,
 )
 from nexus_trade.core.repository import PositionRepository
@@ -39,10 +41,21 @@ from nexus_trade.core.types import (
     PositionType,
 )
 from nexus_trade.execution.executor import OrderExecutor
-from nexus_trade.execution.request import EntryRequest, ExitRequest, ModifyRequest
+from nexus_trade.execution.request import (
+    BracketPendingTicket,
+    CloseData,
+    EntryRequest,
+    ExitLogData,
+    ExitRequest,
+    FillData,
+    ModifyRequest,
+    PartialCloseData,
+    PendingTicket,
+    StandardPendingTicket,
+)
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.logging.async_logger import AsyncTradeLogger
-from nexus_trade.logging.logger import CloseData, FillData, PartialCloseData, TradeLogger
+from nexus_trade.logging.logger import TradeLogger
 from nexus_trade.risk.manager import RiskManager
 from nexus_trade.utils.format import format_price_display
 
@@ -62,14 +75,11 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-_SL_TP_SNAP_TOLERANCE: float = 0.001
-_BREAKEVEN_HALF_BAND_RATIO: float = 0.0005
 _TRIGGER_TP: str = "TP"
 _TRIGGER_SL: str = "SL"
 _TRIGGER_BREAKEVEN: str = "BREAKEVEN"
 _TRIGGER_SIGNAL: str = "SIGNAL"
 _CACHE_STALENESS_THRESHOLD: int = SYSTEM_TIMINGS.cache_staleness_threshold
-_BRACKET_EXPIRY_GRACE_SECONDS: int = 30
 
 
 @dataclass
@@ -133,7 +143,7 @@ class StrategyRunner:
             strategy_name=self.strategy_name,
             strategy_tz=self.strategy_tz,
         )
-        self.trade_logger: AsyncTradeLogger = AsyncTradeLogger(trade_logger=sync_logger, max_queue_size=100)
+        self.trade_logger: AsyncTradeLogger = AsyncTradeLogger(trade_logger=sync_logger, max_queue_size=MAX_QUEUE_SIZE)
         logger.debug(f"AsyncLog strat={self.strategy_name} | q=100")
 
         self.entry_metadata: dict[int, EntryMetadata] = {}
@@ -837,7 +847,7 @@ class StrategyRunner:
                 continue
 
             elapsed = time.time() - pending.submission_time
-            if elapsed < _BRACKET_EXPIRY_GRACE_SECONDS:
+            if elapsed < BRACKET_EXPIRY_GRACE_SECONDS:
                 continue
 
             logger.warning(
@@ -1200,18 +1210,18 @@ class StrategyRunner:
         sl: float | None = pos.sl if pos.sl else None
         tp: float | None = pos.tp if pos.tp else None
 
-        if abs(actual - entry) <= entry * _BREAKEVEN_HALF_BAND_RATIO:
+        if abs(actual - entry) <= entry * BREAKEVEN_HALF_BAND_RATIO:
             return entry, _TRIGGER_BREAKEVEN
 
         if is_buy:
-            if tp is not None and actual >= tp * (1.0 - _SL_TP_SNAP_TOLERANCE):
+            if tp is not None and actual >= tp * (1.0 - SL_TP_SNAP_TOLERANCE):
                 return tp, _TRIGGER_TP
-            if sl is not None and actual <= sl * (1.0 + _SL_TP_SNAP_TOLERANCE):
+            if sl is not None and actual <= sl * (1.0 + SL_TP_SNAP_TOLERANCE):
                 return sl, _TRIGGER_SL
         else:
-            if tp is not None and actual <= tp * (1.0 + _SL_TP_SNAP_TOLERANCE):
+            if tp is not None and actual <= tp * (1.0 + SL_TP_SNAP_TOLERANCE):
                 return tp, _TRIGGER_TP
-            if sl is not None and actual >= sl * (1.0 - _SL_TP_SNAP_TOLERANCE):
+            if sl is not None and actual >= sl * (1.0 - SL_TP_SNAP_TOLERANCE):
                 return sl, _TRIGGER_SL
 
         return actual, _TRIGGER_SIGNAL

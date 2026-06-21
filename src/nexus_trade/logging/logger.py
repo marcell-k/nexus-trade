@@ -14,7 +14,6 @@ import threading
 import time
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -26,53 +25,11 @@ from MetaTrader5 import TradeDeal
 from nexus_trade.core.constants import MT5_DEAL_ENTRY_OUT
 from nexus_trade.core.models import Position
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
-from nexus_trade.core.types import PartialClosePositionSnapshot, PositionCacheEntry, PositionType, ReconciledTrade
+from nexus_trade.core.types import PositionCacheEntry, PositionType, ReconciledTrade
+from nexus_trade.execution.request import CloseData, FillData, PartialCloseData
 from nexus_trade.utils.format import format_price_display
 
 logger = logging.getLogger(__name__)
-
-
-@dataclass
-class FillData:
-    """Trade fill parameters."""
-
-    trade_id: int
-    position: PositionCacheEntry
-    expected_entry_price: float
-    strategy_name: str
-    opening_sl: float | None = None
-    fill_time_ms: float | None = None
-    volume_multiplier: float | None = None
-
-
-@dataclass(slots=True)
-class CloseData:
-    """Trade close parameters."""
-
-    trade_id: int
-    position: PositionCacheEntry
-    expected_exit_price: float | None
-    opening_sl: float | None
-    exit_trigger: str
-    entry_price: float
-    expected_entry_price: float | None
-
-
-@dataclass(slots=True)
-class PartialCloseData:
-    """Partial close parameters."""
-
-    trade_id: int
-    position: PartialClosePositionSnapshot
-    closed_volume: float
-    remaining_volume: float
-    expected_exit_price: float | None
-    opening_sl: float
-    strategy_name: str
-    exit_trigger: str
-    entry_price: float
-    expected_entry_price: float
-    deal_id: int | None = None
 
 
 class TradeLogger:
