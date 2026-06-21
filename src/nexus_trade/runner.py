@@ -987,39 +987,40 @@ class StrategyRunner:
                 return
 
             execution_submitted = True
+            trade_id = self._generate_trade_id()
+
+            if self.order_type == "bracket":
+                assert result.order_tickets is not None, (
+                    f"successful bracket execution must have order_tickets (trade_id={trade_id})"
+                )
+                buy_ticket, sell_ticket = result.order_tickets
+                self._store_entry_metadata_bracket(
+                    trade_id, entry_request, volume_multiplier, submission_time, buy_ticket, sell_ticket
+                )
+                signal_str = "BRACKET"
+            else:
+                expected_entry_price = entry_request.entry_price or data["Close"].iloc[-1]
+                assert result.ticket is not None, (
+                    f"successful standard execution must have ticket (trade_id={trade_id})"
+                )
+                self._store_entry_metadata_standard(
+                    trade_id,
+                    result.ticket,
+                    volume_multiplier,
+                    submission_time,
+                    expected_entry_price,
+                    entry_request.sl,
+                )
+                signal_str = "BUY" if entry_request.signal == 1 else "SELL"
+
+            logger.info(
+                f"Entry strat={self.strategy_name} | tid={trade_id} | dir={signal_str} | vol={entry_request.volume:.2f}"
+            )
 
         finally:
             if position_reserved and not execution_submitted:
                 self.risk_manager.release_position_reservation(reason="exception_during_execution")
                 logger.error(f"PosSlotRel strat={self.strategy_name} | reason=exception_during_execution")
-
-        trade_id = self._generate_trade_id()
-
-        if self.order_type == "bracket":
-            assert result.order_tickets is not None, (
-                f"successful bracket execution must have order_tickets (trade_id={trade_id})"
-            )
-            buy_ticket, sell_ticket = result.order_tickets
-            self._store_entry_metadata_bracket(
-                trade_id, entry_request, volume_multiplier, submission_time, buy_ticket, sell_ticket
-            )
-            signal_str = "BRACKET"
-        else:
-            expected_entry_price = entry_request.entry_price or data["Close"].iloc[-1]
-            assert result.ticket is not None, f"successful standard execution must have ticket (trade_id={trade_id})"
-            self._store_entry_metadata_standard(
-                trade_id,
-                result.ticket,
-                volume_multiplier,
-                submission_time,
-                expected_entry_price,
-                entry_request.sl,
-            )
-            signal_str = "BUY" if entry_request.signal == 1 else "SELL"
-
-        logger.info(
-            f"Entry strat={self.strategy_name} | tid={trade_id} | dir={signal_str} | vol={entry_request.volume:.2f}"
-        )
 
     def _process_modify_signals(
         self, data: pd.DataFrame, preloaded_positions: list[PositionCacheEntry] | None = None
