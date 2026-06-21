@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     import pandas as pd
 
     from nexus_trade.config.account import AccountConfig
-    from nexus_trade.config.profile import MetaLabelingCfg
+    from nexus_trade.config.profile import MetaLabelingConfig
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig, StrategyOrderType
     from nexus_trade.core.protocols import AtomicInt, ProcessLock, StrategyProtocol, XGBClassifierProtocol
     from nexus_trade.core.state import SharedState
@@ -95,7 +95,7 @@ class RunnerConfig:
     global_position_count: AtomicInt
     position_cache_lock: ProcessLock
     trade_id_db_path: Path
-    meta_labeling: MetaLabelingCfg
+    meta_labeling: MetaLabelingConfig
     strategy_offset_seconds: float = 0.0
 
 
@@ -112,7 +112,7 @@ class StrategyRunner:
         self.global_position_count: AtomicInt = config.global_position_count
         self.position_cache_lock: ProcessLock = config.position_cache_lock
         self.trade_id_db_path: Path = config.trade_id_db_path
-        self._meta_labeling: MetaLabelingCfg = config.meta_labeling
+        self._meta_labeling: MetaLabelingConfig = config.meta_labeling
         self.strategy_offset_seconds: float = config.strategy_offset_seconds
 
         self.connection: MT5Connection
@@ -301,7 +301,7 @@ class StrategyRunner:
             self.calibration_model = None
             self.feature_extractor = None
             self.meta_min_confidence = 0.0
-            logger.debug(f"MetaCfg strat={self.strategy_name} | enabled=0")
+            logger.debug(f"MetaConfig strat={self.strategy_name} | enabled=0")
             return
 
         self.meta_model = load_meta_model(cfg, self.strategy_name)
@@ -309,7 +309,7 @@ class StrategyRunner:
         self.feature_extractor = load_features_extractor(cfg, self.strategy_name)
         self.meta_min_confidence = cfg.min_confidence
         if self.meta_model is None:
-            logger.warning(f"MetaCfgWarn strat={self.strategy_name} | enabled=1 | model=missing")
+            logger.warning(f"MetaConfigWarn strat={self.strategy_name} | enabled=1 | model=missing")
 
     def _update_heartbeat(self) -> None:
         self.shared_state["heartbeats"][self.strategy_name] = datetime.now().timestamp()

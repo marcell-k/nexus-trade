@@ -15,24 +15,24 @@ from pydantic import Field, ValidationInfo, field_validator, model_validator
 from nexus_trade.config._base import FrozenModel
 
 
-class DrawdownThresholdCfg(FrozenModel):
+class DrawdownThresholdConfig(FrozenModel):
     drawdown_pct: float = Field(gt=0.0, le=1.0)
     risk_multiplier: float = Field(gt=0.0, le=1.0)
 
 
-class AdaptiveSizingCfg(FrozenModel):
+class AdaptiveSizingConfig(FrozenModel):
     enabled: bool = False
     scope: str = "portfolio"
-    thresholds: list[DrawdownThresholdCfg] = Field(default_factory=list)
+    thresholds: list[DrawdownThresholdConfig] = Field(default_factory=list)
 
 
-class MetaLabelingCfg(FrozenModel):
+class MetaLabelingConfig(FrozenModel):
     enabled: bool = False
     use_calibration: bool = False
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
-class StrategyCfg(FrozenModel):
+class StrategyConfig(FrozenModel):
     enabled: bool
     position_sizing_method: Literal["fractional", "fixed"] = "fractional"
     risk_value: float = Field(
@@ -42,7 +42,7 @@ class StrategyCfg(FrozenModel):
             "For 'fixed': fixed dollar amount risked per trade (e.g. 500 = $500)."
         ),
     )
-    meta_labeling: MetaLabelingCfg = Field(default_factory=MetaLabelingCfg)
+    meta_labeling: MetaLabelingConfig = Field(default_factory=MetaLabelingConfig)
 
     @property
     def risk_fraction(self) -> float:
@@ -50,14 +50,14 @@ class StrategyCfg(FrozenModel):
         return self.risk_value / 100.0
 
 
-class LimitsCfg(FrozenModel):
+class LimitsConfig(FrozenModel):
     max_total_positions: int = Field(gt=0)
     max_daily_trades: int = Field(gt=0)
     max_daily_drawdown_pct: float = Field(gt=0.0, le=1.0)
     max_drawdown_pct: float = Field(gt=0.0, le=1.0)
 
 
-class AccountCfg(FrozenModel):
+class AccountConfig(FrozenModel):
     type: str = Field(min_length=1)
     initial_balance: int = Field(gt=0)
     # Default kept UTC for schema/repr; _inject_history_start_default overrides at runtime.
@@ -98,14 +98,14 @@ class AccountCfg(FrozenModel):
 
 
 class RiskProfile(FrozenModel):
-    account: AccountCfg
-    limits: LimitsCfg
-    adaptive_sizing: AdaptiveSizingCfg = Field(default_factory=AdaptiveSizingCfg)
-    strategies: dict[str, StrategyCfg]
+    account: AccountConfig
+    limits: LimitsConfig
+    adaptive_sizing: AdaptiveSizingConfig = Field(default_factory=AdaptiveSizingConfig)
+    strategies: dict[str, StrategyConfig]
 
     @field_validator("strategies")
     @classmethod
-    def _at_least_one_enabled(cls, v: dict[str, StrategyCfg]) -> dict[str, StrategyCfg]:
+    def _at_least_one_enabled(cls, v: dict[str, StrategyConfig]) -> dict[str, StrategyConfig]:
         if not any(cfg.enabled for cfg in v.values()):
             raise ValueError("profile must enable at least one strategy")
         return v

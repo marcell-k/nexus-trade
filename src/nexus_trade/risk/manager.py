@@ -100,7 +100,7 @@ class RiskManager:
     def _create_news_filter(self) -> NewsFilter | None:
         news_config = self.strategy_config.filters.news
         if not news_config.enabled:
-            logger.info(f"NewsCfg strat={self.strategy_name} | enabled=False")
+            logger.info(f"NewsConfig strat={self.strategy_name} | enabled=False")
             return None
 
         nf = NewsFilter(

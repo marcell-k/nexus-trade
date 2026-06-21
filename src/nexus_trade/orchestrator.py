@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, cast
 import MetaTrader5 as mt
 import numpy as np
 
-from nexus_trade.config.profile import MetaLabelingCfg, RiskProfile
+from nexus_trade.config.profile import MetaLabelingConfig, RiskProfile
 from nexus_trade.config.timings import GRACE_SECONDS, SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.repository import PositionRepository
@@ -238,10 +238,10 @@ class Orchestrator:
             strategy_index % SYSTEM_TIMINGS.max_strategy_offset_slots
         ) / SYSTEM_TIMINGS.strategy_offset_divisor
 
-        meta_cfg: MetaLabelingCfg = (
+        meta_cfg: MetaLabelingConfig = (
             self._profile.strategies[strategy_name].meta_labeling
             if strategy_name in self._profile.strategies
-            else MetaLabelingCfg()
+            else MetaLabelingConfig()
         )
 
         runner_config = RunnerConfig(
@@ -395,7 +395,7 @@ class Orchestrator:
             risk_value = self._profile.strategies[name].risk_value
             method = self._profile.strategies[name].position_sizing_method
             logger.debug(
-                f"StratCfg name={name} | sym={params.symbol} | tf={params.timeframe} | "
+                f"StratConfig name={name} | sym={params.symbol} | tf={params.timeframe} | "
                 f"sizing={method} | risk={risk_value}"
             )
 

@@ -10,7 +10,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from nexus_trade.config.profile import MetaLabelingCfg
+    from nexus_trade.config.profile import MetaLabelingConfig
     from nexus_trade.core.protocols import XGBClassifierProtocol
     from nexus_trade.tools.calibrator import ProbabilityCalibrator
 
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierProtocol | None:
+def load_meta_model(cfg: MetaLabelingConfig, strategy_name: str) -> XGBClassifierProtocol | None:
     if not cfg.enabled:
         return None
 
@@ -43,7 +43,7 @@ def load_meta_model(cfg: MetaLabelingCfg, strategy_name: str) -> XGBClassifierPr
         return None
 
 
-def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> ProbabilityCalibrator | None:
+def load_calibration_model(cfg: MetaLabelingConfig, strategy_name: str) -> ProbabilityCalibrator | None:
     if not cfg.use_calibration:
         return None
 
@@ -68,7 +68,9 @@ def load_calibration_model(cfg: MetaLabelingCfg, strategy_name: str) -> Probabil
         return None
 
 
-def load_features_extractor(cfg: MetaLabelingCfg, strategy_name: str) -> Callable[[pd.DataFrame], pd.DataFrame] | None:
+def load_features_extractor(
+    cfg: MetaLabelingConfig, strategy_name: str
+) -> Callable[[pd.DataFrame], pd.DataFrame] | None:
     if not cfg.enabled:
         return None
 
