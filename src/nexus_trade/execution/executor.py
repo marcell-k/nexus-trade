@@ -16,6 +16,8 @@ import pandas as pd
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.constants import (
     MT5_RETCODE_DONE,
+    RETCODE_NO_CHANGE,
+    RETRYABLE_CODES,
     OrderFilling,
     OrderType,
     TimeInForce,
@@ -86,9 +88,10 @@ class OrderExecutor:
         self.broker_tz: ZoneInfo = broker_tz
 
         self.max_retries: int = 3
-        self.retryable_codes: frozenset[int] = frozenset({10006, 10007, 10010, 10018, 10019})
         _no_changes = getattr(mt, "TRADE_RETCODE_NO_CHANGES", None)
-        self._retcode_no_changes: int = int(_no_changes) if isinstance(_no_changes, int) and _no_changes > 0 else 10025
+        self._retcode_no_changes: int = (
+            int(_no_changes) if isinstance(_no_changes, int) and _no_changes > 0 else RETCODE_NO_CHANGE
+        )
 
         self._entry_handlers: dict[str, Callable[[EntryRequest], ExecutionResult]] = {
             "market": self._execute_market_entry,
@@ -849,7 +852,7 @@ class OrderExecutor:
                 if attempt:
                     logger.info(f"OrderRetryOK sym={symbol} | try={attempt}/{self.max_retries - 1}")
                 return result
-            if result is not None and result.retcode not in self.retryable_codes:
+            if result is not None and result.retcode not in RETRYABLE_CODES:
                 logger.warning(f"OrderSendNoRetry sym={symbol} | rc={result.retcode} | err={result.comment}")
                 return result
             if attempt < self.max_retries - 1:

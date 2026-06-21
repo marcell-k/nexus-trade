@@ -4,6 +4,9 @@ from enum import IntEnum
 
 import MetaTrader5 as mt
 
+RETRYABLE_CODES: frozenset[int] = frozenset({10006, 10007, 10010, 10018, 10019})
+RETCODE_NO_CHANGE = 10025
+
 
 class TimeFrame(IntEnum):
     """MetaTrader 5 timeframe constants."""
