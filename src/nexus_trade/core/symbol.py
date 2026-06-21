@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import MetaTrader5 as mt
 
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.constants import OrderFilling
 
 logger = logging.getLogger(__name__)
@@ -101,16 +102,15 @@ class _CachedEntry:
 class SymbolSpecCache:
     """Thread-safe symbol spec cache with configurable TTL."""
 
-    def __init__(self, ttl_seconds: float = 300.0) -> None:
+    def __init__(self) -> None:
         self._cache: dict[str, _CachedEntry] = {}
         self._lock: threading.Lock = threading.Lock()
-        self.ttl: float = ttl_seconds
 
     def get(self, symbol: str) -> tuple[SymbolSpec, OrderFilling] | None:
         """Return (spec, filling) if cached and fresh."""
         with self._lock:
             entry = self._cache.get(symbol)
-            if entry is not None and entry.is_valid(self.ttl):
+            if entry is not None and entry.is_valid(SYSTEM_TIMINGS.symbol_spec_cache_ttl_seconds):
                 return entry.spec, entry.filling
         return None
 
@@ -141,5 +141,4 @@ class SymbolSpecCache:
             self._cache.pop(symbol, None)
 
 
-# Module-level singleton — one TTL-backed cache per process.
-SYMBOL_SPEC_CACHE: SymbolSpecCache = SymbolSpecCache(ttl_seconds=300.0)
+SYMBOL_SPEC_CACHE: SymbolSpecCache = SymbolSpecCache()

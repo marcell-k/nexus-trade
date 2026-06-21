@@ -8,6 +8,7 @@ from zoneinfo import ZoneInfo
 import numpy as np
 import pandas as pd
 
+from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.state import SharedState
@@ -70,7 +71,6 @@ class NewsFilter:
         self,
         data_handler: DataHandler,
         strategy_name: str,
-        cache_ttl_seconds: int = 3600 * 12,
         shared_state: SharedState | None = None,
     ) -> None:
         """
@@ -87,7 +87,6 @@ class NewsFilter:
         """
         self.data_handler: DataHandler = data_handler
         self.strategy_name: str = strategy_name
-        self.cache_ttl_seconds: int = cache_ttl_seconds
         self.shared_state: SharedState | None = shared_state
         self.calendar_path: Path | None = None
 
@@ -127,7 +126,7 @@ class NewsFilter:
             return False
 
         now_epoch = time.time()
-        return (now_epoch - float(cache_timestamp)) < self.cache_ttl_seconds
+        return (now_epoch - float(cache_timestamp)) < SYSTEM_TIMINGS.news_calendar_cache_ttl_seconds
 
     def _normalize_holidays(
         self, holidays_raw: Iterable[tuple[str | None, date | datetime | str | None]]
