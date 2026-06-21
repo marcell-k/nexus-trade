@@ -133,7 +133,7 @@ def main() -> int:
             return 1
 
         assert account_config.risk_profile_path is not None  # guaranteed: passed resolved path above
-        profile = load_profile(account_config.risk_profile_path)
+        profile = load_profile(account_config.risk_profile_path, account_config.broker_tz)
         logger.info(f"MainStart acct={profile.account.type} | profile={account_config.risk_profile_path.name}")
 
         orchestrator = Orchestrator(account_config=account_config, profile=profile, log_root=log_root)
