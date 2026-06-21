@@ -152,6 +152,7 @@ class StrategyRunner:
         self.pending_by_key: dict[tuple[str, int], list[int]] = {}
         self.pending_by_ticket: dict[int, int] = {}
         self.known_positions: set[int] = set()
+        self._trade_id_refcount: dict[int, int] = {}
 
         self.meta_model: XGBClassifierProtocol | None = None
         self.calibration_model: ProbabilityCalibrator | None = None
@@ -380,6 +381,7 @@ class StrategyRunner:
             "entry_request": None,
         }
         self.ticket_to_trade_id[ticket] = trade_id
+        self._trade_id_refcount[trade_id] = self._trade_id_refcount.get(trade_id, 0) + 1
 
     def _init_known_positions(self, positions: list[Position] | None = None) -> None:
         if positions is None:
@@ -624,14 +626,13 @@ class StrategyRunner:
         for ticket in closed_tickets:
             trade_id = self.ticket_to_trade_id.pop(ticket, None)
             if trade_id is not None:
-                # Only evict metadata when no other tracked ticket still references this
-                # trade_id; a shared id can survive if the dual-fill guard was bypassed.
-                still_referenced = trade_id in self.ticket_to_trade_id.values()
-                metadata = (
-                    self.entry_metadata.pop(trade_id, None)
-                    if not still_referenced
-                    else self.entry_metadata.get(trade_id)
-                )
+                remaining = self._trade_id_refcount.get(trade_id, 1) - 1
+                if remaining <= 0:
+                    self._trade_id_refcount.pop(trade_id, None)
+                    metadata = self.entry_metadata.pop(trade_id, None)
+                else:
+                    self._trade_id_refcount[trade_id] = remaining
+                    metadata = self.entry_metadata.get(trade_id)
             else:
                 metadata = None
             snapshot = metadata.get("position_snapshot") if metadata is not None else None
@@ -717,6 +718,7 @@ class StrategyRunner:
 
         self.local_position_count += 1
         self.known_positions.add(ticket)
+        self._trade_id_refcount[trade_id] = self._trade_id_refcount.get(trade_id, 0) + 1
 
         new_trades = self.atomic_increment_trade()
 
@@ -839,7 +841,7 @@ class StrategyRunner:
             if (buy_ticket and buy_ticket in current_tickets) or (sell_ticket and sell_ticket in current_tickets):
                 continue
 
-            already_resolved = trade_id in self.ticket_to_trade_id.values()
+            already_resolved = self._trade_id_refcount.get(trade_id, 0) > 0
             if already_resolved:
                 continue
 
@@ -1182,6 +1184,11 @@ class StrategyRunner:
         self.local_position_count = max(0, self.local_position_count - 1)
         self.ticket_to_trade_id.pop(ticket, None)
         if trade_id is not None:
+            remaining = self._trade_id_refcount.get(trade_id, 1) - 1
+            if remaining <= 0:
+                self._trade_id_refcount.pop(trade_id, None)
+            else:
+                self._trade_id_refcount[trade_id] = remaining
             self.entry_metadata.pop(trade_id, None)
 
         self._invalidate_cache_for_ticket(ticket)
