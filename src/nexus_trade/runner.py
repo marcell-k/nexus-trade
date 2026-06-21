@@ -8,7 +8,7 @@ import os
 import sqlite3
 import time
 from contextlib import suppress
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
@@ -924,6 +924,27 @@ class StrategyRunner:
         )
         return volume_multiplier, adjusted_volume
 
+    def _resolve_entry_validation_prices(
+        self, entry_request: EntryRequest, data: pd.DataFrame
+    ) -> tuple[float, float] | None:
+        """Resolve (entry_price, sl_price) for risk validation. Logs and returns None if missing."""
+        if self.order_type == "bracket":
+            entry_price = entry_request.buy_stop
+            sl_price = entry_request.buy_sl
+            if entry_price is None or sl_price is None:
+                logger.error(
+                    f"TradeReject strat={self.strategy_name} | reason=bracket_prices_missing"
+                    f" | buy_stop={entry_request.buy_stop} buy_sl={entry_request.buy_sl}"
+                )
+                return None
+            return entry_price, sl_price
+
+        sl_price = entry_request.sl
+        if sl_price is None:
+            logger.error(f"TradeReject strat={self.strategy_name} | reason=sl_missing")
+            return None
+        return float(data["Close"].iloc[-1]), sl_price
+
     def _process_entry_signal(self, data: pd.DataFrame) -> None:
         assert self.strategy is not None, f"{self.strategy_name}: strategy not initialized"
 
@@ -931,23 +952,11 @@ class StrategyRunner:
         if entry_request is None:
             return
 
+        resolved = self._resolve_entry_validation_prices(entry_request, data)
+        if resolved is None:
+            return
+        entry_price, sl_price = resolved
         submission_time = time.time()
-
-        if self.order_type == "bracket":
-            sl_price = entry_request.buy_sl
-            entry_price = entry_request.buy_stop
-            if entry_price is None or sl_price is None:
-                logger.error(
-                    f"TradeReject strat={self.strategy_name} | reason=bracket_prices_missing"
-                    f" | buy_stop={entry_request.buy_stop} buy_sl={entry_request.buy_sl}"
-                )
-                return
-        else:
-            sl_price = entry_request.sl
-            entry_price = data["Close"].iloc[-1]
-            if sl_price is None:
-                logger.error(f"TradeReject strat={self.strategy_name} | reason=sl_missing")
-                return
 
         validation = self.risk_manager.validate_trade(
             strategy_name=self.strategy_name,
@@ -965,7 +974,6 @@ class StrategyRunner:
 
         position_reserved = True
         execution_submitted = False
-        result = None
 
         try:
             volume_multiplier, adjusted_volume = self._apply_meta_labeling(data, base_volume=validation.volume)
@@ -979,7 +987,7 @@ class StrategyRunner:
                 )
                 return
 
-            entry_request.volume = adjusted_volume
+            entry_request = replace(entry_request, volume=adjusted_volume)
             result = self.executor.execute_entry(entry_request)
 
             if not result.success:
@@ -1001,7 +1009,11 @@ class StrategyRunner:
                 )
                 signal_str = "BRACKET"
             else:
-                expected_entry_price = entry_request.entry_price or data["Close"].iloc[-1]
+                expected_entry_price = (
+                    entry_request.entry_price
+                    if entry_request.entry_price is not None
+                    else float(data["Close"].iloc[-1])
+                )
                 assert result.ticket is not None, (
                     f"successful standard execution must have ticket (trade_id={trade_id})"
                 )
