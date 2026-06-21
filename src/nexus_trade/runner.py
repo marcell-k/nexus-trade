@@ -55,7 +55,7 @@ from nexus_trade.execution.request import (
 )
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.logging.async_logger import AsyncTradeLogger
-from nexus_trade.logging.logger import TradeLogger
+from nexus_trade.logging.trade_logger import TradeLogger
 from nexus_trade.risk.manager import RiskManager
 from nexus_trade.utils.format import format_price_display
 

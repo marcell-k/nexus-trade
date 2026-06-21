@@ -7,7 +7,7 @@ from queue import Empty, Full, Queue
 
 from nexus_trade.core.types import ReconciledTrade
 from nexus_trade.execution.request import CloseData, FillData, PartialCloseData
-from nexus_trade.logging.logger import TradeLogger
+from nexus_trade.logging.trade_logger import TradeLogger
 
 logger = logging.getLogger(__name__)
 type LogPayload = FillData | CloseData | PartialCloseData
