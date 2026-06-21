@@ -74,6 +74,19 @@ class EntryRequest:
             raise ValueError(f"Invalid signal {self.signal}, must be 1 (long), -1 (short), or 2 (bracket)")
         if self.volume < 0 or (not math.isfinite(self.volume)):
             raise ValueError(f"Invalid volume {self.volume}, must be >= 0 and finite")
+        if self.order_type == "bracket":
+            missing = [
+                name
+                for name, value in (
+                    ("buy_stop", self.buy_stop),
+                    ("sell_stop", self.sell_stop),
+                    ("buy_sl", self.buy_sl),
+                    ("sell_sl", self.sell_sl),
+                )
+                if value is None
+            ]
+            if missing:
+                raise ValueError(f"Bracket order missing required fields: {missing}")
 
 
 @dataclass
