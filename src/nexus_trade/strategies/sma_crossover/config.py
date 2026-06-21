@@ -33,7 +33,6 @@ def get_config() -> StrategyConfig[SMAParams]:
         execution=ExecutionConfig(
             magic_number=1001,
             deviation=50,
-            comment_prefix="SMA",
         ),
         strategy_class="SMACrossoverStrategy",
         symbol="EURUSD",

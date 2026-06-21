@@ -172,7 +172,7 @@ class OrderExecutor:
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
-            "comment": request.comment or config.execution.comment_prefix,
+            "comment": request.comment,
             "type_filling": type_filling,
             "type_time": TimeInForce.GTC,
         }
@@ -219,7 +219,7 @@ class OrderExecutor:
             "tp": tp,
             "deviation": config.execution.deviation,
             "magic": config.execution.magic_number,
-            "comment": request.comment or config.execution.comment_prefix,
+            "comment": request.comment,
             "type_filling": type_filling,
             "type_time": type_time,
         }
@@ -331,7 +331,7 @@ class OrderExecutor:
             is_buy=False,
         )
 
-        comment = request.comment or str(strategy_config.execution.comment_prefix)
+        comment = request.comment
         buy_order = self._build_bracket_request(
             buy_action,
             buy_type,

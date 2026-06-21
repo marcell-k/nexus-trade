@@ -10,7 +10,6 @@ from nexus_trade.config._base import FrozenModel
 class ExecutionConfig(FrozenModel):
     magic_number: int = Field(gt=0)
     deviation: int = Field(ge=0, default=100)
-    comment_prefix: str = Field(default="", max_length=15)
     min_market_threshold_points: int = Field(default=0, ge=0)
 
 
