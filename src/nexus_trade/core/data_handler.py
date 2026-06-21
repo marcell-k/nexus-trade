@@ -43,9 +43,6 @@ class _RingBuffer:
     _volume: np.ndarray = field(init=False)
     _spread: np.ndarray = field(init=False)
 
-    _is_dirty: bool = field(default=True, init=False)
-    _cached_df: pd.DataFrame | None = field(default=None, init=False)
-
     def __post_init__(self) -> None:
         self._timestamps = np.empty(self.capacity, dtype="datetime64[ns]")
         self._open = np.empty(self.capacity, dtype=np.float64)
@@ -78,8 +75,6 @@ class _RingBuffer:
             idx = self._head
             self._head = (self._head + 1) % self.capacity
 
-        self._is_dirty = True
-
         self._timestamps[idx] = np.datetime64(ts_ns, "ns")
         self._open[idx] = open_
         self._high[idx] = high
@@ -89,10 +84,6 @@ class _RingBuffer:
         self._spread[idx] = spread
 
     def to_dataframe(self, tz: ZoneInfo) -> pd.DataFrame:
-        """O(1) read if cached, O(n) if dirty."""
-        if not self._is_dirty and self._cached_df is not None:
-            return self._cached_df
-
         if self._size == 0:
             return pd.DataFrame(columns=["Open", "High", "Low", "Close", "Volume", "spread"])
 
@@ -101,7 +92,7 @@ class _RingBuffer:
         index = pd.DatetimeIndex(ts, tz="UTC").tz_convert(tz)
         index.name = "Time"
 
-        self._cached_df = pd.DataFrame(
+        return pd.DataFrame(
             {
                 "Open": self._open[indices],
                 "High": self._high[indices],
@@ -112,14 +103,10 @@ class _RingBuffer:
             },
             index=index,
         )
-        self._is_dirty = False
-        return self._cached_df
 
     def clear(self) -> None:
         self._size = 0
         self._head = 0
-        self._is_dirty = True
-        self._cached_df = None
 
 
 class DataHandler:
