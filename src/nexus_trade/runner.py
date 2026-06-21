@@ -809,7 +809,7 @@ class StrategyRunner:
         metadata["opening_sl"] = pos.sl if pos.sl else None
 
         opposite_ticket = conditions.sell_order_ticket if is_buy else conditions.buy_order_ticket
-        if opposite_ticket and self.executor.cancel_order(opposite_ticket):
+        if opposite_ticket != 0:
             logger.info(f"BracketOppCancel strat={self.strategy_name} | t={opposite_ticket}")
 
         self._cleanup_pending(pending_trade_id, composite_key)

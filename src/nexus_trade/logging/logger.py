@@ -11,7 +11,6 @@ Schema:
 import logging
 import sqlite3
 import threading
-import time
 from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
