@@ -5,7 +5,6 @@ from __future__ import annotations
 import ctypes
 import importlib
 import logging
-import threading
 import time
 from datetime import datetime, timedelta
 from multiprocessing import Lock, Manager, Process, Value
@@ -70,9 +69,6 @@ class Orchestrator:
         self.strategy_processes: dict[str, Process] = {}
         self.strategy_configs: dict[str, StrategyConfig[BaseStrategyParams]] = {}
         self.process_crash_count: dict[str, int] = {}
-
-        self._drawdown_refresh_stop: threading.Event = threading.Event()
-        self._drawdown_refresh_thread: threading.Thread | None = None
 
         self.trade_id_db_path: Path = self.log_root / "trade_id_sequence.db"
         self.trade_id_manager: TradeIDSequenceManager = TradeIDSequenceManager(self.trade_id_db_path)
@@ -338,9 +334,18 @@ class Orchestrator:
         broker_tz = self.account_config.broker_tz
         last_reset_date = datetime.now(tz=broker_tz).date()
         last_log_time = time.time()
+        last_drawdown_refresh: float = time.time()
 
         while not self.shared_state["shutdown_flag"]:
             self.refresh_position_cache()
+
+            now_mt = time.time()
+            if now_mt - last_drawdown_refresh >= SYSTEM_TIMINGS.drawdown_refresh_interval_seconds:
+                try:
+                    self._refresh_shared_drawdown()
+                except Exception:
+                    logger.exception("DDRefreshFail process=orchestrator")
+                last_drawdown_refresh = now_mt
 
             current_time = datetime.now(tz=broker_tz)
             active = sum(1 for p in self.strategy_processes.values() if p.is_alive())
@@ -411,14 +416,6 @@ class Orchestrator:
             self.spawn_strategy_process(name, config, strategy_index=i)
             if i < len(self.strategy_configs) - 1:
                 time.sleep(0.1)
-
-    def _drawdown_refresh_loop(self) -> None:
-        interval = SYSTEM_TIMINGS.drawdown_refresh_interval_seconds
-        while not self._drawdown_refresh_stop.wait(interval):
-            try:
-                self._refresh_shared_drawdown()
-            except Exception:
-                logger.exception("DDRefreshFail process=orchestrator")
 
     def _refresh_shared_drawdown(self) -> None:
         account = mt.account_info()
@@ -511,12 +508,6 @@ class Orchestrator:
         self._sync_positions()
         self.preload_calendar_cache()
         self._refresh_shared_drawdown()
-        self._drawdown_refresh_thread = threading.Thread(
-            target=self._drawdown_refresh_loop,
-            name="orchestrator-drawdown-refresh",
-            daemon=True,
-        )
-        self._drawdown_refresh_thread.start()
         self._spawn_all_strategies()
         log_section_header(
             logger,
@@ -561,9 +552,6 @@ class Orchestrator:
             return
 
         self._shutdown_initiated = True
-        self._drawdown_refresh_stop.set()
-        if self._drawdown_refresh_thread is not None:
-            self._drawdown_refresh_thread.join(timeout=5.0)
 
         log_section_header(logger, "ORCHESTRATOR SHUTTING DOWN", level=logging.DEBUG)
 
