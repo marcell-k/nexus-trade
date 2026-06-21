@@ -898,8 +898,8 @@ class OrderExecutor:
         volume = round(raw / step) * step
         if volume <= symbol_spec.volume_min:
             logger.warning(
-                f"CloseVolAdj sym={symbol} | req={raw:.4f} | portion={portion:.4f} | "
+                f"CloseVolAdj sym={symbol} | req={raw:.4f} | portion={portion if portion is not None else 1.0:.4f} | "
                 f"pos={pos_volume:.4f} | min={symbol_spec.volume_min:.4f} | action=use_min"
             )
             volume = symbol_spec.volume_min
-        return min(volume, symbol_spec.volume_max)
+        return min(volume, symbol_spec.volume_max, pos_volume)
