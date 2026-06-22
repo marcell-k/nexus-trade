@@ -321,3 +321,9 @@ def history_deals_get(
     position: int | None = None,
     ticket: int | None = None,
 ) -> tuple[TradeDeal, ...] | None: ...
+def copy_rates_range(
+    symbol: str,
+    timeframe: int,
+    date_from: datetime,
+    date_to: datetime,
+) -> npt.NDArray[np.void] | None: ...

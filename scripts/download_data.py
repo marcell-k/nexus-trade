@@ -90,7 +90,7 @@ def download_range_data(
     target_tz = ZoneInfo(timezone)
     logger.info(f"Downloading {broker_symbol} {timeframe} {start_dt.date()} → {end_dt.date()} ...")
 
-    rates: np.ndarray | None = mt.copy_rates_range(broker_symbol, timeframe_enum, start_dt, end_dt)  # type: ignore[reportAttributeAccessIssue]
+    rates: np.ndarray | None = mt.copy_rates_range(broker_symbol, timeframe_enum, start_dt, end_dt)
     if rates is None or rates.size == 0:
         logger.warning(f"NO DATA for {broker_symbol}")
         return None
