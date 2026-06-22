@@ -492,14 +492,14 @@ class OrderExecutor:
             )
             return _ExpirationOutcome.EXPIRED
 
-        if market.server_epoch and self._broker_display_to_utc_epoch(expiration_broker) <= market.server_epoch:
+        if market.server_epoch and self._broker_display_to_mt5_epoch(expiration_broker) <= market.server_epoch:
             logger.error(
                 f"ExpFail hhmm={request.expiration_time} | tz={strategy_tz.key} | "
                 f"exp={expiration_broker.strftime('%Y-%m-%d %H:%M:%S %Z')} | reason=lte_server_time"
             )
             return _ExpirationOutcome.EXPIRED
 
-        return self._broker_display_to_utc_epoch(expiration_broker)
+        return self._broker_display_to_mt5_epoch(expiration_broker)
 
     def _server_epoch_to_broker_display(self, srv_epoch: int) -> pd.Timestamp:
         """Convert server epoch (UTC) to broker display timezone."""
@@ -510,14 +510,14 @@ class OrderExecutor:
 
         return (time_utc - pd.Timedelta(seconds=offset)).tz_convert(self.broker_tz)
 
-    def _broker_display_to_utc_epoch(self, broker_display: pd.Timestamp) -> int:
+    def _broker_display_to_mt5_epoch(self, broker_display: pd.Timestamp) -> int:
         """Convert broker display time back to real UTC epoch."""
-        time_utc = pd.to_datetime(broker_display.value, unit="ns", utc=True)
-        delta = time_utc.tz_convert(self.broker_tz).utcoffset()
+        utc_ts = broker_display.tz_convert("UTC")
+        delta = utc_ts.tz_convert(self.broker_tz).utcoffset()
         assert delta is not None
         offset = delta.total_seconds()
-        real_utc = broker_display.tz_convert("UTC") + pd.Timedelta(seconds=offset)
-        return int(real_utc.timestamp())
+        display_epoch_ts = utc_ts + pd.Timedelta(seconds=offset)
+        return int(display_epoch_ts.timestamp())
 
     def _parse_expiration_hhmm(
         self, hhmm: str, now_strategy: pd.Timestamp, tf_minutes: int, strategy_tz: ZoneInfo
