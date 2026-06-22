@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 import MetaTrader5 as mt
 import pandas as pd
 
-from nexus_trade.config.account import AccountConfig, load_account_config_from_env, load_env_file
+from nexus_trade.config.account import MT5ConnectionConfig, load_account_config_from_env, load_env_file
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES
 
 if TYPE_CHECKING:
@@ -24,13 +24,13 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _load_account() -> AccountConfig:
+def _load_account() -> MT5ConnectionConfig:
     env_path = Path.home() / ".config" / "mt5-trading" / ".env"
     load_env_file(str(env_path))
     return load_account_config_from_env()
 
 
-def _connect(config: AccountConfig) -> None:
+def _connect(config: MT5ConnectionConfig) -> None:
     if not mt.initialize(
         login=config.login,
         password=config.password,

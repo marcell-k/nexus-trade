@@ -30,7 +30,7 @@ if TYPE_CHECKING:
 
     from MetaTrader5 import AccountInfo
 
-    from nexus_trade.config.account import AccountConfig
+    from nexus_trade.config.account import MT5ConnectionConfig
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.protocols import AtomicInt, ProcessLock
     from nexus_trade.core.state import SharedState
@@ -45,9 +45,9 @@ HEARTBEAT_LOG_INTERVAL_SECONDS: int = SYSTEM_TIMINGS.heartbeat_log_interval
 class Orchestrator:
     """Multi-strategy orchestrator with shared position cache."""
 
-    def __init__(self, account_config: AccountConfig, profile: RiskProfile, log_root: Path) -> None:
+    def __init__(self, account_config: MT5ConnectionConfig, profile: RiskProfile, log_root: Path) -> None:
         self.log_root: Path = Path(log_root)
-        self.account_config: AccountConfig = account_config
+        self.account_config: MT5ConnectionConfig = account_config
         self._profile: RiskProfile = profile
 
         self.global_risk_policy: GlobalRiskPolicy = self._build_risk_policy(profile)
@@ -119,7 +119,6 @@ class Orchestrator:
         state["shutdown_flag"] = False
         state["position_cache"] = cast("dict[int, PositionCacheEntry]", self.manager.dict())
         state["position_cache_timestamp"] = 0.0
-        state["heartbeats"] = cast("dict[str, float]", self.manager.dict())
         state["daily_drawdown"] = 0.0
         state["max_drawdown"] = 0.0
         state["daily_trade_counts"] = cast("dict[str, int]", self.manager.dict())
@@ -133,6 +132,7 @@ class Orchestrator:
         target["daily_trade_counts"] = cast("dict[str, int]", self.manager.dict())
         target["daily_equity_high"] = 0.0
         target["daily_drawdown"] = 0.0
+        target["drawdown_snapshot"] = (0.0, 0.0)
         target["daily_drawdown_current_equity"] = 0.0
         target["daily_drawdown_peak_equity"] = 0.0
         target["daily_drawdown_last_update"] = 0.0
@@ -425,6 +425,10 @@ class Orchestrator:
             return
         self._refresh_max_drawdown(account)
         self._refresh_daily_drawdown(account)
+        self.shared_state["drawdown_snapshot"] = (
+            float(self.shared_state["daily_drawdown"]),
+            float(self.shared_state["max_drawdown"]),
+        )
 
     def _refresh_max_drawdown(self, account: AccountInfo) -> None:
         now = datetime.now(tz=self.account_config.broker_tz)

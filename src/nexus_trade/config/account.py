@@ -58,7 +58,7 @@ def load_env_file(
             os.environ[normalized_key] = value.strip(" \"'")
 
 
-class AccountConfig(BaseModel):
+class MT5ConnectionConfig(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(frozen=True, arbitrary_types_allowed=True)
     login: int = Field(description="Account number")
     password: str = Field(description="Account password")
@@ -106,8 +106,8 @@ class AccountConfig(BaseModel):
 def load_account_config_from_env(
     *,
     risk_profile_path: str | Path | None = None,
-) -> AccountConfig:
-    """Load AccountConfig from environment variables."""
+) -> MT5ConnectionConfig:
+    """Load MT5ConnectionConfig from environment variables."""
     env_data: dict[str, object] = {
         "login": os.environ.get("LOGIN"),
         "password": os.environ.get("PASSWORD"),
@@ -117,4 +117,4 @@ def load_account_config_from_env(
         "calendar_path": os.environ.get("CALENDAR_PATH"),
         "risk_profile_path": risk_profile_path if risk_profile_path is not None else os.environ.get("RISK_PROFILE"),
     }
-    return AccountConfig.model_validate(env_data)
+    return MT5ConnectionConfig.model_validate(env_data)

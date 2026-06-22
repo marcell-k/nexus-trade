@@ -12,6 +12,8 @@ from nexus_trade.logging.trade_logger import TradeLogger
 logger = logging.getLogger(__name__)
 type LogPayload = FillData | CloseData | PartialCloseData
 
+_CRITICAL_ENQUEUE_TIMEOUT = 5.0
+
 
 class AsyncTradeLogger:
     """Asynchronous wrapper for TradeLogger with background thread writer."""
@@ -54,10 +56,10 @@ class AsyncTradeLogger:
         logger.debug(f"AsyncLogThreadExit strat={self._logger.strategy_name}")
 
     def log_fill(self, data: FillData) -> None:
-        self._enqueue("log_fill", data)
+        self._enqueue_critical("log_fill", data)
 
     def log_close(self, data: CloseData) -> None:
-        self._enqueue("log_close", data)
+        self._enqueue_critical("log_close", data)
 
     def log_partial_close(self, data: PartialCloseData) -> None:
         self._enqueue("log_partial_close", data)
@@ -65,6 +67,29 @@ class AsyncTradeLogger:
     def get_open_trades_by_ticket_last_three(self, tickets: list[int]) -> dict[int, ReconciledTrade]:
         """Provide synchronous passthrough for startup reconciliation reads."""
         return self._logger.get_open_trades_by_ticket_last_three(tickets)
+
+    def _enqueue_critical(self, method_name: str, data: LogPayload) -> None:
+        """Blocking enqueue for fill/close records — data loss unacceptable."""
+        if self._shutdown_flag.is_set():
+            self._write_sync(method_name, data)
+            return
+        try:
+            self._queue.put((method_name, data), block=True, timeout=_CRITICAL_ENQUEUE_TIMEOUT)
+        except Full:
+            logger.critical(
+                f"AsyncLogCriticalBlock strat={self._logger.strategy_name} | m={method_name} | "
+                f"timeout={_CRITICAL_ENQUEUE_TIMEOUT}s | action=sync_fallback"
+            )
+            self._write_sync(method_name, data)
+        except Exception as e:
+            logger.error(f"AsyncLogQueueErr strat={self._logger.strategy_name} | m={method_name} | err={e}")
+
+    def _write_sync(self, method_name: str, data: LogPayload) -> None:
+        """Direct synchronous write to TradeLogger — shutdown/overflow fallback."""
+        try:
+            getattr(self._logger, method_name)(data)
+        except Exception as e:
+            logger.error(f"AsyncLogSyncFail strat={self._logger.strategy_name} | m={method_name} | err={e}")
 
     def _enqueue(self, method_name: str, data: LogPayload) -> None:
         with self._state_lock:

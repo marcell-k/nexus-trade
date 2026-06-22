@@ -6,7 +6,7 @@ import MetaTrader5 as mt
 from MetaTrader5 import AccountInfo
 
 # Assuming this exists in your project
-from nexus_trade.config.account import AccountConfig
+from nexus_trade.config.account import MT5ConnectionConfig
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 
 logger = logging.getLogger(__name__)
@@ -20,8 +20,8 @@ class ConnectionState(Enum):
 
 
 class MT5Connection:
-    def __init__(self, config: AccountConfig, connection_check_ttl: int = 60) -> None:
-        self.config: AccountConfig = config
+    def __init__(self, config: MT5ConnectionConfig, connection_check_ttl: int = 60) -> None:
+        self.config: MT5ConnectionConfig = config
         self.state: ConnectionState = ConnectionState.DISCONNECTED
         self.connection_check_ttl: int = connection_check_ttl
         self._cached_connection_state: bool | None = None

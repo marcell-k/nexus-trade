@@ -32,7 +32,7 @@ class MetaLabelingConfig(FrozenModel):
     min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
 
 
-class StrategyConfig(FrozenModel):
+class StrategyRiskSettings(FrozenModel):
     enabled: bool
     position_sizing_method: Literal["fractional", "fixed"] = "fractional"
     risk_value: float = Field(
@@ -57,7 +57,7 @@ class LimitsConfig(FrozenModel):
     max_drawdown_pct: float = Field(gt=0.0, le=1.0)
 
 
-class AccountConfig(FrozenModel):
+class RiskMT5ConnectionConfig(FrozenModel):
     type: str = Field(min_length=1)
     initial_balance: int = Field(gt=0)
     # Default kept UTC for schema/repr; _inject_history_start_default overrides at runtime.
@@ -98,14 +98,14 @@ class AccountConfig(FrozenModel):
 
 
 class RiskProfile(FrozenModel):
-    account: AccountConfig
+    account: RiskMT5ConnectionConfig
     limits: LimitsConfig
     adaptive_sizing: AdaptiveSizingConfig = Field(default_factory=AdaptiveSizingConfig)
-    strategies: dict[str, StrategyConfig]
+    strategies: dict[str, StrategyRiskSettings]
 
     @field_validator("strategies")
     @classmethod
-    def _at_least_one_enabled(cls, v: dict[str, StrategyConfig]) -> dict[str, StrategyConfig]:
+    def _at_least_one_enabled(cls, v: dict[str, StrategyRiskSettings]) -> dict[str, StrategyRiskSettings]:
         if not any(cfg.enabled for cfg in v.values()):
             raise ValueError("profile must enable at least one strategy")
         return v

@@ -14,10 +14,10 @@ class _SharedStateRequired(TypedDict):
     shutdown_flag: bool
     position_cache: dict[int, PositionCacheEntry]
     position_cache_timestamp: float
-    heartbeats: dict[str, float]
     daily_drawdown: float
     max_drawdown: float
     daily_trade_counts: dict[str, int]
+    drawdown_snapshot: tuple[float, float]  # (daily_dd, max_dd)
 
 
 class SharedState(_SharedStateRequired, total=False):

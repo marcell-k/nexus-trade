@@ -6,6 +6,7 @@ import importlib
 import logging
 import os
 import sqlite3
+import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, replace
@@ -65,7 +66,7 @@ if TYPE_CHECKING:
 
     import pandas as pd
 
-    from nexus_trade.config.account import AccountConfig
+    from nexus_trade.config.account import MT5ConnectionConfig
     from nexus_trade.config.profile import MetaLabelingConfig
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig, StrategyOrderType
     from nexus_trade.core.protocols import AtomicInt, ProcessLock, StrategyProtocol, XGBClassifierProtocol
@@ -88,7 +89,7 @@ class RunnerConfig:
 
     strategy_name: str
     strategy_config: StrategyConfig[BaseStrategyParams]
-    broker_config: AccountConfig
+    broker_config: MT5ConnectionConfig
     global_risk_policy: GlobalRiskPolicy
     shared_state: SharedState
     global_trade_count: AtomicInt
@@ -105,7 +106,7 @@ class StrategyRunner:
     def __init__(self, config: RunnerConfig) -> None:
         self.strategy_name: str = config.strategy_name
         self.config: StrategyConfig[BaseStrategyParams] = config.strategy_config
-        self.broker_config: AccountConfig = config.broker_config
+        self.broker_config: MT5ConnectionConfig = config.broker_config
         self.global_risk_policy: GlobalRiskPolicy = config.global_risk_policy
         self.shared_state: SharedState = config.shared_state
         self.global_trade_count: AtomicInt = config.global_trade_count
@@ -166,6 +167,7 @@ class StrategyRunner:
 
         self._symbol_tick_cache: dict[str, MT5Tick] = {}
         self._cleanup_done: bool = False
+        self._trade_count_lock: threading.Lock = threading.Lock()
 
         logger.info(
             f"Init strat={self.strategy_name:<9} | tf={self.timeframe:<3} | "
@@ -202,10 +204,6 @@ class StrategyRunner:
 
         self._load_meta_models()
 
-        if "heartbeats" not in self.shared_state:
-            self.shared_state["heartbeats"] = {}
-        self._update_heartbeat()
-
     def run(self) -> None:
         """Run the main event loop — timeframe-aligned entry + 1-minute exit monitoring."""
         try:
@@ -241,7 +239,6 @@ class StrategyRunner:
                 process_entry = self.next_entry_time and now >= self.next_entry_time - tolerance
                 process_exit = now >= self.next_exit_time - tolerance
 
-                self._update_heartbeat()
                 preloaded_positions: list[PositionCacheEntry] | None = None
 
                 if process_entry:
@@ -304,9 +301,6 @@ class StrategyRunner:
         self.meta_min_confidence = cfg.min_confidence
         if self.meta_model is None:
             logger.warning(f"MetaConfigWarn strat={self.strategy_name} | enabled=1 | model=missing")
-
-    def _update_heartbeat(self) -> None:
-        self.shared_state["heartbeats"][self.strategy_name] = datetime.now().timestamp()
 
     def _fetch_data(self) -> pd.DataFrame | None:
         return self.data_handler.get_latest_bars(strategy_name=self.strategy_name)
@@ -873,8 +867,9 @@ class StrategyRunner:
 
     def _increment_daily_trade_count(self) -> None:
         """Increment this strategy's entry in the shared per-strategy daily trade counter."""
-        counts: dict[str, int] = self.shared_state["daily_trade_counts"]
-        counts[self.strategy_name] = counts.get(self.strategy_name, 0) + 1
+        with self._trade_count_lock:
+            counts: dict[str, int] = self.shared_state["daily_trade_counts"]
+            counts[self.strategy_name] = counts.get(self.strategy_name, 0) + 1
 
     def _atomic_decrement_global_positions(self, count: int, reason: str) -> int:
         if count <= 0:
@@ -999,6 +994,7 @@ class StrategyRunner:
                 return
 
             entry_request = replace(entry_request, volume=adjusted_volume)
+            trade_id = self._generate_trade_id()
             result = self.executor.execute_entry(entry_request)
 
             if not result.success:
@@ -1008,7 +1004,6 @@ class StrategyRunner:
                 return
 
             execution_submitted = True
-            trade_id = self._generate_trade_id()
 
             if self.order_type == "bracket":
                 assert result.order_tickets is not None, (

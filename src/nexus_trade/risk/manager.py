@@ -214,12 +214,8 @@ class RiskManager:
             return ValidationResult(False, "Daily trade limit reached")
 
         if not self._drawdown_cache.is_valid(SYSTEM_TIMINGS.drawdown_cache_ttl_seconds):
-            self._drawdown_cache.set(
-                (
-                    float(self.shared_state["daily_drawdown"]),
-                    float(self.shared_state["max_drawdown"]),
-                )
-            )
+            raw = self.shared_state.get("drawdown_snapshot")
+            self._drawdown_cache.set(raw if raw is not None else (0.0, 0.0))
 
         assert self._drawdown_cache.value is not None
         daily_dd, max_dd = self._drawdown_cache.value
