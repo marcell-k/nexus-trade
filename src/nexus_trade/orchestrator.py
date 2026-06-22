@@ -18,7 +18,6 @@ from nexus_trade.config.timings import GRACE_SECONDS, SYSTEM_TIMINGS
 from nexus_trade.core.connection import MT5Connection
 from nexus_trade.core.registry import STRATEGY_CONFIG_REGISTRY
 from nexus_trade.core.repository import PositionRepository
-from nexus_trade.core.types import StrategyRiskConfig
 from nexus_trade.execution.executor import OrderExecutor
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.filters.news import preprocess_calendar_file
@@ -34,7 +33,7 @@ if TYPE_CHECKING:
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig
     from nexus_trade.core.protocols import AtomicInt, ProcessLock
     from nexus_trade.core.state import SharedState
-    from nexus_trade.core.types import GlobalRiskPolicy, OrderSnapshot, PositionCacheEntry
+    from nexus_trade.core.types import OrderSnapshot, PositionCacheEntry
 
 
 logger = logging.getLogger(__name__)
@@ -49,8 +48,6 @@ class Orchestrator:
         self.log_root: Path = Path(log_root)
         self.account_config: MT5ConnectionConfig = account_config
         self._profile: RiskProfile = profile
-
-        self.global_risk_policy: GlobalRiskPolicy = self._build_risk_policy(profile)
 
         self.manager: SyncManager = Manager()
 
@@ -81,38 +78,9 @@ class Orchestrator:
 
         logger.info(
             f"OrchInit acct={self._profile.account.type} | "
-            f"pos_max={self.global_risk_policy['max_total_positions']} | "
-            f"tr_max={self.global_risk_policy['max_daily_trades']}"
+            f"pos_max={self._profile.limits.max_total_positions} | "
+            f"tr_max={self._profile.limits.max_daily_trades}"
         )
-
-    def _build_risk_policy(self, profile: RiskProfile) -> GlobalRiskPolicy:
-        return {
-            "max_total_positions": profile.limits.max_total_positions,
-            "max_daily_drawdown_pct": profile.limits.max_daily_drawdown_pct,
-            "max_drawdown_pct": profile.limits.max_drawdown_pct,
-            "max_daily_trades": profile.limits.max_daily_trades,
-            "initial_balance": profile.account.initial_balance,
-            "adaptive_sizing": {
-                "enabled": profile.adaptive_sizing.enabled,
-                "scope": profile.adaptive_sizing.scope,
-                "drawdown_thresholds": [
-                    {"drawdown_pct": t.drawdown_pct, "risk_multiplier": t.risk_multiplier}
-                    for t in profile.adaptive_sizing.thresholds
-                ],
-            },
-            "strategy_risk": cast(
-                "dict[str, StrategyRiskConfig]",
-                {
-                    name: StrategyRiskConfig(
-                        method=cfg.position_sizing_method,
-                        risk_value=cfg.risk_value,
-                    )
-                    for name, cfg in profile.strategies.items()
-                    if cfg.enabled
-                },
-            ),
-            "log_root": str(self.log_root),
-        }
 
     def _initialize_shared_state(self) -> SharedState:
         state: SharedState = cast("SharedState", self.manager.dict())
@@ -132,7 +100,6 @@ class Orchestrator:
         target["daily_trade_counts"] = cast("dict[str, int]", self.manager.dict())
         target["daily_equity_high"] = 0.0
         target["daily_drawdown"] = 0.0
-        target["drawdown_snapshot"] = (0.0, 0.0)
         target["daily_drawdown_current_equity"] = 0.0
         target["daily_drawdown_peak_equity"] = 0.0
         target["daily_drawdown_last_update"] = 0.0
@@ -145,7 +112,8 @@ class Orchestrator:
         target["max_drawdown_initialized"] = False
         target["drawdown_last_refresh"] = 0.0
         target["hist_pnl_sum"] = 0.0
-        target["hist_peak_equity"] = float(self.global_risk_policy["initial_balance"])
+        target["hist_peak_equity"] = float(self._profile.account.initial_balance)
+
         target["last_equity_update"] = 0.0
 
     def _get_magic_numbers(self) -> frozenset[int]:
@@ -247,7 +215,8 @@ class Orchestrator:
             strategy_name=strategy_name,
             strategy_config=config,
             broker_config=self.account_config,
-            global_risk_policy=self.global_risk_policy,
+            risk_profile=self._profile,
+            log_root=self.log_root,
             shared_state=self.shared_state,
             global_trade_count=self.global_trade_count,
             global_position_count=self.global_position_count,
@@ -352,8 +321,8 @@ class Orchestrator:
             active = sum(1 for p in self.strategy_processes.values() if p.is_alive())
             cache_pos = self.global_position_count.value
             total_tr = self.global_trade_count.value
-            max_pos = self.global_risk_policy["max_total_positions"]
-            max_tr = self.global_risk_policy["max_daily_trades"]
+            max_pos = self._profile.limits.max_total_positions
+            max_tr = self._profile.limits.max_daily_trades
 
             if self._should_log_heartbeat(current_time, last_log_time):
                 logger.info(
@@ -425,16 +394,12 @@ class Orchestrator:
             return
         self._refresh_max_drawdown(account)
         self._refresh_daily_drawdown(account)
-        self.shared_state["drawdown_snapshot"] = (
-            float(self.shared_state["daily_drawdown"]),
-            float(self.shared_state["max_drawdown"]),
-        )
 
     def _refresh_max_drawdown(self, account: AccountInfo) -> None:
         now = datetime.now(tz=self.account_config.broker_tz)
 
         current_equity = float(account.equity)
-        initial_balance = float(self.global_risk_policy["initial_balance"])
+        initial_balance = float(self._profile.account.initial_balance)
 
         last_refresh_ts: float = float(self.shared_state.get("drawdown_last_refresh", 0.0))
         is_full_rescan = last_refresh_ts == 0.0
@@ -485,7 +450,8 @@ class Orchestrator:
         midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
 
         current_equity = float(account.equity)
-        initial_balance = float(self.global_risk_policy["initial_balance"])
+        initial_balance = float(self._profile.account.initial_balance)
+
         now_ts = now.timestamp()
 
         daily_deals = mt.history_deals_get(midnight, now + timedelta(seconds=1)) or ()

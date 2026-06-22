@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import TYPE_CHECKING, Literal, Protocol, TypedDict
+from typing import TYPE_CHECKING, Protocol, TypedDict
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -107,33 +107,6 @@ class TTLCache[T]:
         """Clear the cached value and reset the timestamp."""
         self.value = None
         self.timestamp = 0.0
-
-
-class DrawdownThreshold(TypedDict):
-    drawdown_pct: float
-    risk_multiplier: float
-
-
-class AdaptiveSizingConfig(TypedDict):
-    enabled: bool
-    scope: str
-    drawdown_thresholds: list[DrawdownThreshold]
-
-
-class GlobalRiskPolicy(TypedDict):
-    max_total_positions: int
-    max_daily_drawdown_pct: float
-    strategy_risk: dict[str, StrategyRiskConfig]
-    log_root: str
-    max_drawdown_pct: float
-    max_daily_trades: int
-    initial_balance: int
-    adaptive_sizing: AdaptiveSizingConfig
-
-
-class StrategyRiskConfig(TypedDict):
-    method: Literal["fractional", "fixed"]
-    risk_value: float
 
 
 class EntryMetadata(TypedDict):

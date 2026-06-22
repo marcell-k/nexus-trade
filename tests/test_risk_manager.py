@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from nexus_trade.config.profile import RiskProfile
 from nexus_trade.config.strategy import ExecutionConfig, RiskConfig, StrategyConfig
 from nexus_trade.core.data_handler import DataHandler
 from nexus_trade.risk.manager import RiskManager
@@ -17,7 +18,6 @@ if TYPE_CHECKING:
     from MetaTrader5 import AccountInfo, SymbolInfo
 
     from nexus_trade.core.state import SharedState
-    from nexus_trade.core.types import GlobalRiskPolicy
 
 
 @pytest.fixture
@@ -35,18 +35,22 @@ def strategy_cfg() -> StrategyConfig:
     )
 
 
-@pytest.fixture
-def global_policy() -> dict:
-    return {
-        "max_total_positions": 10,
-        "max_daily_drawdown_pct": 0.05,
-        "max_drawdown_pct": 0.20,
-        "max_daily_trades": 50,
-        "initial_balance": 10_000,
-        "adaptive_sizing": {"enabled": False, "scope": "portfolio", "drawdown_thresholds": []},
-        "strategy_risk": {"test_strategy": {"method": "fractional", "risk_value": 1.0}},
-        "log_root": "/tmp/nexus_test",  # noqa: S108
-    }
+def risk_profile() -> RiskProfile:
+    return RiskProfile.model_validate(
+        {
+            "account": {"type": "demo", "initial_balance": 10_000},
+            "limits": {
+                "max_total_positions": 10,
+                "max_daily_trades": 50,
+                "max_daily_drawdown_pct": 0.05,
+                "max_drawdown_pct": 0.20,
+            },
+            "adaptive_sizing": {"enabled": False, "scope": "portfolio", "thresholds": []},
+            "strategies": {
+                "test_strategy": {"enabled": True, "position_sizing_method": "fractional", "risk_value": 1.0}
+            },
+        }
+    )
 
 
 @pytest.fixture
@@ -95,7 +99,7 @@ def _make_trade_count() -> MagicMock:
 @pytest.fixture
 def risk_manager(
     strategy_cfg: StrategyConfig,
-    global_policy: GlobalRiskPolicy,
+    risk_profile: RiskProfile,
     shared_state: SharedState,
     atomic_counter: MagicMock,
     data_handler: DataHandler,
@@ -105,7 +109,7 @@ def risk_manager(
 
     return RiskManager(
         strategy_config=strategy_cfg,
-        global_policy=global_policy,
+        risk_profile=risk_profile,
         shared_state=shared_state,
         global_trade_count=_make_trade_count(),
         global_position_count=atomic_counter,
@@ -121,15 +125,15 @@ class TestCheckGlobalRisk:
         assert risk_manager.check_global_risk().can_trade is True
 
     def test_blocks_on_position_limit(
-        self, risk_manager: RiskManager, atomic_counter: MagicMock, global_policy: dict
+        self, risk_manager: RiskManager, atomic_counter: MagicMock, risk_profile: RiskProfile
     ) -> None:
-        atomic_counter.value = global_policy["max_total_positions"]
+        atomic_counter.value = risk_profile.limits.max_total_positions
         result = risk_manager.check_global_risk()
         assert result.can_trade is False
         assert "position limit" in result.reason.lower()
 
-    def test_blocks_on_trade_limit(self, risk_manager: RiskManager, global_policy: dict) -> None:
-        risk_manager.global_trade_count.value = global_policy["max_daily_trades"]
+    def test_blocks_on_trade_limit(self, risk_manager: RiskManager, risk_profile: RiskProfile) -> None:
+        risk_manager.global_trade_count.value = risk_profile.limits.max_daily_trades
         result = risk_manager.check_global_risk()
         assert result.can_trade is False
         assert "trade limit" in result.reason.lower()
@@ -213,32 +217,32 @@ class TestAdaptiveRiskMultiplier:
     ) -> None:
         from zoneinfo import ZoneInfo
 
-        policy: GlobalRiskPolicy = {
-            "max_total_positions": 10,
-            "max_daily_drawdown_pct": 0.05,
-            "max_drawdown_pct": 0.20,
-            "max_daily_trades": 50,
-            "initial_balance": 10_000,
-            "adaptive_sizing": {
-                "enabled": True,
-                "scope": "portfolio",
-                "drawdown_thresholds": [
-                    {"drawdown_pct": 0.05, "risk_multiplier": 0.5},
-                    {"drawdown_pct": 0.10, "risk_multiplier": 0.25},
-                ],
-            },
-            "strategy_risk": {
-                "test_strategy": {
-                    "method": "fractional",  # or "fixed" depending on your logic
-                    "risk_value": 0.01,
-                }
-            },
-            "log_root": "/tmp",  # noqa: S108
-        }
+        profile = RiskProfile.model_validate(
+            {
+                "account": {"type": "demo", "initial_balance": 10_000},
+                "limits": {
+                    "max_total_positions": 10,
+                    "max_daily_trades": 50,
+                    "max_daily_drawdown_pct": 0.05,
+                    "max_drawdown_pct": 0.20,
+                },
+                "adaptive_sizing": {
+                    "enabled": True,
+                    "scope": "portfolio",
+                    "thresholds": [
+                        {"drawdown_pct": 0.05, "risk_multiplier": 0.5},
+                        {"drawdown_pct": 0.10, "risk_multiplier": 0.25},
+                    ],
+                },
+                "strategies": {
+                    "test_strategy": {"enabled": True, "position_sizing_method": "fractional", "risk_value": 1.0}
+                },
+            }
+        )
         shared_state["max_drawdown"] = 0.07
         rm = RiskManager(
             strategy_config=strategy_cfg,
-            global_policy=policy,
+            risk_profile=profile,
             shared_state=shared_state,
             global_trade_count=_make_trade_count(),
             global_position_count=atomic_counter,

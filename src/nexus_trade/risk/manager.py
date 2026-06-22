@@ -10,7 +10,7 @@ import MetaTrader5 as mt
 
 from nexus_trade.config.timings import SYSTEM_TIMINGS
 from nexus_trade.core.symbol import SYMBOL_SPEC_CACHE, SymbolSpec
-from nexus_trade.core.types import DrawdownThreshold, GlobalRiskPolicy, NewsEvent, TTLCache
+from nexus_trade.core.types import NewsEvent, TTLCache
 from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
 
@@ -19,6 +19,7 @@ if TYPE_CHECKING:
 
     from MetaTrader5 import AccountInfo
 
+    from nexus_trade.config.profile import DrawdownThresholdConfig, RiskProfile
     from nexus_trade.config.strategy import BaseStrategyParams, RiskConfig, SessionConfig, StrategyConfig
     from nexus_trade.core.data_handler import DataHandler
     from nexus_trade.core.protocols import AtomicInt, StrategyRunnerProtocol
@@ -50,7 +51,7 @@ class RiskManager:
     def __init__(
         self,
         strategy_config: StrategyConfig[BaseStrategyParams],
-        global_policy: GlobalRiskPolicy,
+        risk_profile: RiskProfile,
         shared_state: SharedState,
         global_trade_count: AtomicInt,
         global_position_count: AtomicInt,
@@ -60,7 +61,7 @@ class RiskManager:
     ) -> None:
         self.strategy_config: StrategyConfig[BaseStrategyParams] = strategy_config
         self.risk_config: RiskConfig = strategy_config.risk
-        self.global_policy: GlobalRiskPolicy = global_policy
+        self.risk_profile: RiskProfile = risk_profile
         self.shared_state: SharedState = shared_state
         self.global_trade_count: AtomicInt = global_trade_count
         self.global_position_count: AtomicInt = global_position_count
@@ -75,9 +76,9 @@ class RiskManager:
             max_slippage_points=self.risk_config.max_slippage_points,
         )
 
-        self._sorted_drawdown_thresholds: list[DrawdownThreshold] = sorted(
-            global_policy["adaptive_sizing"]["drawdown_thresholds"],
-            key=lambda x: x["drawdown_pct"],
+        self._sorted_drawdown_thresholds: list[DrawdownThresholdConfig] = sorted(
+            risk_profile.adaptive_sizing.thresholds,
+            key=lambda threshold: threshold.drawdown_pct,
             reverse=True,
         )
 
@@ -146,7 +147,7 @@ class RiskManager:
             return ValidationResult(False, "Global position limit reached")
 
         logger.debug(
-            f"PosSlotRes strat={self.strategy_name} | cnt={reserved_count}/{self.global_policy['max_total_positions']}"
+            f"PosSlotRes strat={self.strategy_name} | cnt={reserved_count}/{self.risk_profile.limits.max_total_positions}"  # noqa: E501
         )
         return ValidationResult(True, "All checks passed", volume=volume)
 
@@ -184,7 +185,7 @@ class RiskManager:
 
     def _check_and_reserve_position_slot(self) -> int | None:
         with self.global_position_count.get_lock():
-            if self.global_position_count.value >= self.global_policy["max_total_positions"]:
+            if self.global_position_count.value >= self.risk_profile.limits.max_total_positions:
                 return None
             self.global_position_count.value += 1
             return self.global_position_count.value
@@ -202,26 +203,27 @@ class RiskManager:
                 self.global_position_count.value -= 1
                 logger.debug(
                     f"PosSlotRel strat={self.strategy_name} | reason={reason} | "
-                    f"cnt={self.global_position_count.value}/{self.global_policy['max_total_positions']}"
+                    f"cnt={self.global_position_count.value}/{self.risk_profile.limits.max_total_positions}"
                 )
             else:
                 logger.warning(f"PosSlotRelWarn strat={self.strategy_name} | reason=counter_already_zero")
 
     def check_global_risk(self) -> ValidationResult:
-        if self.global_position_count.value >= self.global_policy["max_total_positions"]:
+        if self.global_position_count.value >= self.risk_profile.limits.max_total_positions:
             return ValidationResult(False, "Global position limit reached")
-        if self.global_trade_count.value >= self.global_policy["max_daily_trades"]:
+        if self.global_trade_count.value >= self.risk_profile.limits.max_daily_trades:
             return ValidationResult(False, "Daily trade limit reached")
 
         if not self._drawdown_cache.is_valid(SYSTEM_TIMINGS.drawdown_cache_ttl_seconds):
-            raw = self.shared_state.get("drawdown_snapshot")
-            self._drawdown_cache.set(raw if raw is not None else (0.0, 0.0))
+            daily_dd_raw = float(self.shared_state.get("daily_drawdown", 0.0) or 0.0)
+            max_dd_raw = float(self.shared_state.get("max_drawdown", 0.0) or 0.0)
+            self._drawdown_cache.set((daily_dd_raw, max_dd_raw))
 
         assert self._drawdown_cache.value is not None
         daily_dd, max_dd = self._drawdown_cache.value
-        if daily_dd > self.global_policy["max_daily_drawdown_pct"]:
+        if daily_dd > self.risk_profile.limits.max_daily_drawdown_pct:
             return ValidationResult(False, f"Daily drawdown {daily_dd * 100:.1f}%")
-        if max_dd > self.global_policy["max_drawdown_pct"]:
+        if max_dd > self.risk_profile.limits.max_drawdown_pct:
             return ValidationResult(False, f"Max drawdown {max_dd * 100:.1f}%")
         return ValidationResult(True, "Global checks passed")
 
@@ -297,12 +299,12 @@ class RiskManager:
             return 0.0
 
         ticks = sl_distance / symbol_info.tick_size
-        strategy_risk = self.global_policy["strategy_risk"][strategy_name]
+        strategy_risk = self.risk_profile.strategies[strategy_name]
 
-        if strategy_risk["method"] == "fixed":
-            volume = strategy_risk["risk_value"] / (ticks * tick_value)
+        if strategy_risk.position_sizing_method == "fixed":
+            volume = strategy_risk.risk_value / (ticks * tick_value)
             logger.debug(
-                f"PosSizeFixed strat={strategy_name} | risk=${strategy_risk['risk_value']:.2f} | "
+                f"PosSizeFixed strat={strategy_name} | risk=${strategy_risk.risk_value:.2f} | "
                 f"sl_dist={sl_distance:.5f} | vol={volume:.4f}"
             )
             return self._normalize_volume(volume, symbol_info)
@@ -313,7 +315,7 @@ class RiskManager:
             return 0.0
 
         risk_multiplier = self._get_adaptive_risk_multiplier(strategy_name)
-        adjusted_risk: float = account_info.balance * (strategy_risk["risk_value"] / 100.0) * risk_multiplier
+        adjusted_risk: float = account_info.balance * strategy_risk.risk_fraction * risk_multiplier
         volume = adjusted_risk / (ticks * tick_value)
         return self._normalize_volume(volume, symbol_info)
 
@@ -323,15 +325,15 @@ class RiskManager:
         return max(symbol_info.volume_min, min(volume, symbol_info.volume_max))
 
     def _get_adaptive_risk_multiplier(self, strategy_name: str) -> float:
-        if not self.global_policy["adaptive_sizing"]["enabled"]:
+        if not self.risk_profile.adaptive_sizing.enabled:
             return 1.0
         current_drawdown: float = float(self.shared_state["max_drawdown"])
         for threshold in self._sorted_drawdown_thresholds:
-            if current_drawdown >= threshold["drawdown_pct"]:
-                multiplier = threshold["risk_multiplier"]
+            if current_drawdown >= threshold.drawdown_pct:
+                multiplier = threshold.risk_multiplier
                 logger.info(
                     f"AdaptiveRisk strat={strategy_name} | dd={current_drawdown * 100:.2f}% | "
-                    f"thr={threshold['drawdown_pct'] * 100:.1f}% | mul={multiplier:.2f}"
+                    f"thr={threshold.drawdown_pct * 100:.1f}% | mul={multiplier:.2f}"
                 )
                 return multiplier
         return 1.0

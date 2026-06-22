@@ -11,7 +11,6 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Literal, cast
 
 import MetaTrader5 as mt
@@ -34,7 +33,6 @@ from nexus_trade.core.models import (
 from nexus_trade.core.repository import PositionRepository
 from nexus_trade.core.types import (
     EntryMetadata,
-    GlobalRiskPolicy,
     MT5Tick,
     OrderSnapshot,
     PartialClosePositionSnapshot,
@@ -62,12 +60,13 @@ from nexus_trade.utils.format import format_price_display
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from pathlib import Path
     from zoneinfo import ZoneInfo
 
     import pandas as pd
 
     from nexus_trade.config.account import MT5ConnectionConfig
-    from nexus_trade.config.profile import MetaLabelingConfig
+    from nexus_trade.config.profile import MetaLabelingConfig, RiskProfile
     from nexus_trade.config.strategy import BaseStrategyParams, StrategyConfig, StrategyOrderType
     from nexus_trade.core.protocols import AtomicInt, ProcessLock, StrategyProtocol, XGBClassifierProtocol
     from nexus_trade.core.state import SharedState
@@ -90,7 +89,8 @@ class RunnerConfig:
     strategy_name: str
     strategy_config: StrategyConfig[BaseStrategyParams]
     broker_config: MT5ConnectionConfig
-    global_risk_policy: GlobalRiskPolicy
+    risk_profile: RiskProfile
+    log_root: Path
     shared_state: SharedState
     global_trade_count: AtomicInt
     global_position_count: AtomicInt
@@ -107,7 +107,8 @@ class StrategyRunner:
         self.strategy_name: str = config.strategy_name
         self.config: StrategyConfig[BaseStrategyParams] = config.strategy_config
         self.broker_config: MT5ConnectionConfig = config.broker_config
-        self.global_risk_policy: GlobalRiskPolicy = config.global_risk_policy
+        self.risk_profile: RiskProfile = config.risk_profile
+        self.log_root: Path = config.log_root
         self.shared_state: SharedState = config.shared_state
         self.global_trade_count: AtomicInt = config.global_trade_count
         self.global_position_count: AtomicInt = config.global_position_count
@@ -139,7 +140,7 @@ class StrategyRunner:
         self.broker_tz: ZoneInfo = self.broker_config.broker_tz
 
         sync_logger = TradeLogger(
-            log_root=Path(self.global_risk_policy["log_root"]) / "trades",
+            log_root=self.log_root / "trades",
             strategy_name=self.strategy_name,
             strategy_tz=self.strategy_tz,
         )
@@ -165,7 +166,7 @@ class StrategyRunner:
         self.next_entry_time: datetime | None = None
         self.next_exit_time: datetime | None = None
 
-        self._symbol_tick_cache: dict[str, MT5Tick] = {}
+        self._cycle_tick_dedup: dict[str, MT5Tick] = {}
         self._cleanup_done: bool = False
         self._trade_count_lock: threading.Lock = threading.Lock()
 
@@ -193,7 +194,7 @@ class StrategyRunner:
         self.executor = OrderExecutor(self.broker_tz)
         self.risk_manager = RiskManager(
             strategy_config=self.config,
-            global_policy=self.global_risk_policy,
+            risk_profile=self.risk_profile,
             shared_state=self.shared_state,
             global_trade_count=self.global_trade_count,
             global_position_count=self.global_position_count,
@@ -234,7 +235,7 @@ class StrategyRunner:
                     time.sleep(5.0)
                     continue
 
-                self._symbol_tick_cache.clear()
+                self._cycle_tick_dedup.clear()
 
                 process_entry = self.next_entry_time and now >= self.next_entry_time - tolerance
                 process_exit = now >= self.next_exit_time - tolerance
@@ -663,8 +664,8 @@ class StrategyRunner:
         if closed_count:
             logger.info(
                 f"PosClosedDetect strat={self.strategy_name} | n={len(closed_tickets)} | "
-                f"local={self.local_position_count}/{self.global_risk_policy['max_total_positions']} | "
-                f"global={global_count}/{self.global_risk_policy['max_total_positions']}"
+                f"local={self.local_position_count}/{self.risk_profile.limits.max_total_positions} | "
+                f"global={global_count}/{self.risk_profile.limits.max_total_positions}"
             )
         elif closed_tickets:
             logger.warning(
@@ -736,8 +737,8 @@ class StrategyRunner:
             f"Fill strat={self.strategy_name} | id={trade_id} | t={ticket} | "
             f"{'B' if pos.type == PositionType.BUY else 'S'} {pos.volume:.2f}@"
             f"{format_price_display(pos.price_open)} | "
-            f"pos={self.local_position_count}/{self.global_risk_policy['max_total_positions']} | "
-            f"tr={new_trades}/{self.global_risk_policy['max_daily_trades']}"
+            f"pos={self.local_position_count}/{self.risk_profile.limits.max_total_positions} | "
+            f"tr={new_trades}/{self.risk_profile.limits.max_daily_trades}"
         )
 
     def _handle_orphaned_fill(self, ticket: int, pos: Position) -> int | None:
@@ -889,7 +890,7 @@ class StrategyRunner:
 
         logger.debug(
             f"PosCountDec strat={self.strategy_name} | n={new_count}/"
-            f"{self.global_risk_policy['max_total_positions']} | delta=-{count} | reason={reason}"
+            f"{self.risk_profile.limits.max_total_positions} | delta=-{count} | reason={reason}"
         )
         return new_count
 
@@ -1145,12 +1146,12 @@ class StrategyRunner:
         )
 
     def _get_cached_symbol_tick(self, symbol: str) -> MT5Tick | None:
-        if symbol in self._symbol_tick_cache:
-            return self._symbol_tick_cache[symbol]
+        if symbol in self._cycle_tick_dedup:
+            return self._cycle_tick_dedup[symbol]
         tick = mt.symbol_info_tick(symbol)
         if tick is None:
             return None
-        self._symbol_tick_cache[symbol] = tick
+        self._cycle_tick_dedup[symbol] = tick
         return tick
 
     def _log_partial_close_execution(self, data: ExitLogData) -> Position | None:
@@ -1210,7 +1211,7 @@ class StrategyRunner:
             self.entry_metadata.pop(trade_id, None)
 
         self._invalidate_cache_for_ticket(ticket)
-        max_pos = self.global_risk_policy["max_total_positions"]
+        max_pos = self.risk_profile.limits.max_total_positions
 
         if trade_id is None:
             logger.warning(
@@ -1423,7 +1424,7 @@ class StrategyRunner:
 
 def run_strategy_process(config: RunnerConfig) -> None:
     """Entry point for ``multiprocessing.Process``."""
-    log_root = Path(config.global_risk_policy["log_root"])
+    log_root = config.log_root
     log_root.mkdir(parents=True, exist_ok=True)
     logging.basicConfig(
         level=logging.INFO,

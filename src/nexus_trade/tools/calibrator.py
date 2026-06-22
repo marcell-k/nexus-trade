@@ -19,7 +19,7 @@ except ImportError as _ml_import_err:
 logger = logging.getLogger(__name__)
 
 
-class _SklearnClassifier(Protocol):
+class SklearnClassifierProtocol(Protocol):
     """Binary sklearn classifier operating on ndarray inputs."""
 
     coef_: np.ndarray
@@ -29,14 +29,14 @@ class _SklearnClassifier(Protocol):
     def predict_proba(self, X: np.ndarray) -> np.ndarray: ...
 
 
-class _IsotonicModel(Protocol):
+class IsotonicModelProtocol(Protocol):
     """Isotonic regression operating on ndarray inputs."""
 
     def fit(self, X: np.ndarray, y: np.ndarray) -> object: ...
     def predict(self, X: np.ndarray) -> np.ndarray: ...
 
 
-_ModelType = _SklearnClassifier | _IsotonicModel | Literal["temperature"]
+CalibratorModel = SklearnClassifierProtocol | IsotonicModelProtocol | Literal["temperature"]
 
 
 class ProbabilityCalibrator:
@@ -63,13 +63,13 @@ class ProbabilityCalibrator:
     ) -> None:
         self.method: str = method.lower()
         self.base_methods: tuple[str, ...] = base_methods
-        self.model: _ModelType | None = None
+        self.model: CalibratorModel | None = None
         self.T: float | None = None
         self._fitted: bool = False
 
         # Meta-method attributes
         self.base_calibrators: dict[str, ProbabilityCalibrator] = {}
-        self.meta_model: _SklearnClassifier | None = None
+        self.meta_model: SklearnClassifierProtocol | None = None
 
         # Validation
         valid_base_methods = {"platt", "beta", "isotonic", "temperature"}
@@ -105,13 +105,13 @@ class ProbabilityCalibrator:
         if self.model is None:
             raise RuntimeError(f"Model not fitted for method '{self.method}'")
         if self.method == "platt":
-            _m = cast("_SklearnClassifier", self.model)
+            _m = cast("SklearnClassifierProtocol", self.model)
             return _m.predict_proba(self._logit(p).reshape(-1, 1))[:, 1]
         if self.method == "isotonic":
-            _m_iso = cast("_IsotonicModel", self.model)
+            _m_iso = cast("IsotonicModelProtocol", self.model)
             return _m_iso.predict(p)
         if self.method == "beta":
-            _m = cast("_SklearnClassifier", self.model)
+            _m = cast("SklearnClassifierProtocol", self.model)
             X = np.column_stack([self._logit(p), self._logit(1 - p)])
             return _m.predict_proba(X)[:, 1]
         if self.method == "temperature":
