@@ -269,19 +269,14 @@ class StrategyRunner:
         if self._cleanup_done:
             return
         self._cleanup_done = True
-
-        logger.debug(f"CleanupStart strat={self.strategy_name}")
-
-        self._cancel_pending_orders_on_shutdown()
-
-        if self.trade_logger and hasattr(self.trade_logger, "shutdown"):
-            logger.debug(f"CleanupTradeLog strat={self.strategy_name} | action=drain")
+        if hasattr(self, "executor"):
+            self._cancel_pending_orders_on_shutdown()
+        if hasattr(self, "trade_logger"):
             self.trade_logger.shutdown(timeout=10.0)
-
-        self.trade_id_manager.close()
-        self.connection.disconnect()
-
-        logger.debug(f"CleanupDone strat={self.strategy_name}")
+        if hasattr(self, "trade_id_manager"):
+            self.trade_id_manager.close()
+        if hasattr(self, "connection"):
+            self.connection.disconnect()
 
     def _load_strategy_class(self) -> type:
         module = importlib.import_module(self.config.strategy_module)
