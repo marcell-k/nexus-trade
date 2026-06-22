@@ -858,7 +858,7 @@ class StrategyRunner:
                 continue
 
             kind = "bracket" if isinstance(pending, BracketPendingTicket) else "standard"
-            logger.warning(
+            logger.info(
                 f"PendingOrderExpired strat={self.strategy_name} | kind={kind} | "
                 f"elapsed={elapsed:.0f}s | tickets={tickets}"
             )

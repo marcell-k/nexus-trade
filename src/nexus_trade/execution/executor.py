@@ -481,7 +481,7 @@ class OrderExecutor:
 
         now_broker_display = self._server_epoch_to_broker_display(market.tick_epoch)
         now_strategy = now_broker_display.tz_convert(strategy_tz)
-        expiration_pd = self._parse_expiration_hhmm(request.expiration_time, now_strategy, tf_minutes, strategy_tz)
+        expiration_pd = self._parse_expiration_hhmm(request.expiration_time, now_strategy, strategy_tz)
         expiration_broker = expiration_pd.tz_convert(self.broker_tz)
 
         if expiration_broker <= now_broker_display:
@@ -519,12 +519,10 @@ class OrderExecutor:
         display_epoch_ts = utc_ts + pd.Timedelta(seconds=offset)
         return int(display_epoch_ts.timestamp())
 
-    def _parse_expiration_hhmm(
-        self, hhmm: str, now_strategy: pd.Timestamp, tf_minutes: int, strategy_tz: ZoneInfo
-    ) -> pd.Timestamp:
+    def _parse_expiration_hhmm(self, hhmm: str, now_strategy: pd.Timestamp, strategy_tz: ZoneInfo) -> pd.Timestamp:
         hour, minute = int(hhmm[:2]), int(hhmm[3:])
         naive_dt = datetime(now_strategy.year, now_strategy.month, now_strategy.day, hour, minute)
-        naive_timestamp = pd.Timestamp(naive_dt) + pd.Timedelta(minutes=tf_minutes) - pd.Timedelta(seconds=1)
+        naive_timestamp = pd.Timestamp(naive_dt)
         try:
             localized = naive_timestamp.tz_localize(strategy_tz, ambiguous="raise", nonexistent="raise")
         except Exception:

@@ -147,24 +147,22 @@ class DataHandler:
     def _extract_complete_bars(
         self, rates: np.ndarray, timeframe_minutes: int
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-        """Filter `rates` (as returned by MT5) down to bars that are fully closed.
+        """Filter MT5 OHLCV rows to fully-closed bars only.
 
-        Returns (ts_ns, open, high, low, close, volume, spread), oldest first, where ts_ns is
-        each bar's *open* time as an absolute epoch-nanosecond instant (timezone-agnostic —
-        convert it for display only, never for comparison; comparing raw ints sidesteps any
-        clock-drift/jitter issues entirely).
+        MT5 bar timestamps are broker-display-time encoded as Unix epoch values,
+        not real UTC. Localize to broker TZ then convert to real UTC nanoseconds
+        before comparing against the system clock.
         """
         cutoff_ns = int((pd.Timestamp.now(tz="UTC") + pd.Timedelta(seconds=10)).value)
 
-        broker_offset_s = int(
-            pd.Timestamp.now(tz=self.broker_tz).utcoffset().total_seconds()  # type: ignore[union-attr]
-        )
-
         ts_s = rates["time"].astype(np.int64)
-        ts_utc_s: np.ndarray = ts_s - broker_offset_s
-        bar_close_utc_ns: np.ndarray = (ts_utc_s + timeframe_minutes * 60) * 1_000_000_000
-        bar_open_utc_ns: np.ndarray = ts_utc_s * 1_000_000_000
 
+        naive_bar_dts = pd.to_datetime(ts_s, unit="s")
+        localized = naive_bar_dts.tz_localize(self.broker_tz, ambiguous="NaT", nonexistent="shift_forward")
+        bar_open_utc_ns: np.ndarray = localized.tz_convert("UTC").as_unit("ns").astype(np.int64).to_numpy()
+
+        interval_ns = np.int64(timeframe_minutes * 60 * 1_000_000_000)
+        bar_close_utc_ns: np.ndarray = bar_open_utc_ns + interval_ns
         complete_mask = bar_close_utc_ns <= cutoff_ns
         indices = np.where(complete_mask)[0]
 
@@ -185,11 +183,11 @@ class DataHandler:
         strategy_config: StrategyConfig[BaseStrategyParams],
     ) -> pd.DataFrame | None:
         if ring.is_empty:
-            return None
+            return None  # No data at all — real failure.
         df = ring.to_dataframe(strategy_tz)
         if strategy_config.trading_hours.enabled:
             df = self._filter_session_hours(df, strategy_config)
-        return df.tail(strategy_config.params.backcandles) if len(df) > 0 else None
+        return df.tail(strategy_config.params.backcandles)
 
     def get_latest_bars(self, strategy_name: str) -> pd.DataFrame | None:
         strategy_config = STRATEGY_CONFIG_REGISTRY.get_strategy_config(strategy_name)
