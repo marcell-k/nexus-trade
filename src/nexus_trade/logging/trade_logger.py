@@ -15,6 +15,7 @@ from collections.abc import Generator, Sequence
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
+from time import sleep
 from zoneinfo import ZoneInfo
 
 import MetaTrader5 as mt
@@ -507,13 +508,15 @@ class TradeLogger:
         entry_filter: int | None = None,
     ) -> list[TradeDeal] | None:
         """Retrieve history deals for a ticket with bounded retry backoff."""
-        for _ in range(max_retries):
+        for attempt in range(max_retries):
             deals = mt.history_deals_get(position=ticket)
             if deals and len(deals) > 0:
                 deal_list: list[TradeDeal] = list(deals)
                 if entry_filter is not None:
                     deal_list = [d for d in deals if getattr(d, "entry", None) == entry_filter]
                 return deal_list
+            if attempt < max_retries - 1:
+                sleep(0.05 * (2**attempt))  # 50ms, 100ms
         logger.error(f"DealsFetchFail ctx={context} | t={ticket} | reason=no_deals")
         return None
 
