@@ -514,7 +514,8 @@ class TradeLogger:
                 deal_list: list[TradeDeal] = list(deals)
                 if entry_filter is not None:
                     deal_list = [d for d in deals if getattr(d, "entry", None) == entry_filter]
-                return deal_list
+                if deal_list:
+                    return deal_list
             if attempt < max_retries - 1:
                 sleep(0.05 * (2**attempt))  # 50ms, 100ms
         logger.error(f"DealsFetchFail ctx={context} | t={ticket} | reason=no_deals")

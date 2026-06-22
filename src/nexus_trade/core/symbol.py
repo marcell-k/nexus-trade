@@ -96,7 +96,7 @@ class _CachedEntry:
     timestamp: float
 
     def is_valid(self, ttl: float) -> bool:
-        return (time.time() - self.timestamp) < ttl
+        return (time.monotonic() - self.timestamp) < ttl
 
 
 class SymbolSpecCache:

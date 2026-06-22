@@ -391,6 +391,14 @@ class Orchestrator:
         account = mt.account_info()
         if account is None:
             logger.error("DrawdownRefreshFail reason=account_info_unavailable")
+            if self.connection is None or not self.connection.is_connected():
+                logger.critical("DrawdownRefreshFail reason=mt5_disconnected. Activating shutdown flag.")
+            else:
+                logger.error(
+                    "DrawdownRefreshFail reason=transient_api_error_while_connected. Activating shutdown flag."
+                )
+
+            self.shared_state["shutdown_flag"] = True
             return
         self._refresh_max_drawdown(account)
         self._refresh_daily_drawdown(account)

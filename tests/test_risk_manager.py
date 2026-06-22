@@ -35,6 +35,7 @@ def strategy_cfg() -> StrategyConfig:
     )
 
 
+@pytest.fixture
 def risk_profile() -> RiskProfile:
     return RiskProfile.model_validate(
         {
@@ -54,7 +55,7 @@ def risk_profile() -> RiskProfile:
 
 
 @pytest.fixture
-def shared_state() -> dict:
+def shared_state() -> SharedState:
     return {
         "shutdown_flag": False,
         "position_cache": {},

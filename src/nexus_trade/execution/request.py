@@ -105,10 +105,6 @@ class ExitRequest:
     comment: str = ""
     expected_exit_price: float | None = None
 
-    # TODO: implement new_sl and new_tp
-    new_sl: float | None = None
-    new_tp: float | None = None
-
     # Metadata
     strategy_name: str | None = None
     exit_reason: str = ""
