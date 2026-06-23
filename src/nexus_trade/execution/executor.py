@@ -247,7 +247,7 @@ class OrderExecutor:
         config = self._get_strategy_config(request.strategy_name)
         symbol_spec, type_filling = self._get_cached_symbol_spec(symbol)
 
-        market = self._fetch_market_data(symbol)
+        market = self._fetch_market_data(symbol, symbol_spec)
         if market is None:
             return self._fail_entry(symbol, f"{symbol}: market data unavailable")
 
@@ -440,20 +440,24 @@ class OrderExecutor:
 
         return buy_raw, sell_raw
 
-    def _fetch_market_data(self, symbol: str) -> _MarketData | None:
+    def _fetch_market_data(self, symbol: str, symbol_spec: SymbolSpec | None = None) -> _MarketData | None:
         """Single MT5 round-trip for all market state needed by entry paths."""
         raw_tick: MT5Tick | None = mt.symbol_info_tick(symbol)
-        symbol_info = mt.symbol_info(symbol)
-        if raw_tick is None or symbol_info is None:
-            logger.error(msg="Fetch market data error")
+        if raw_tick is None:
+            logger.error(f"FetchMarketDataFail sym={symbol} | reason=tick_unavailable")
             return None
 
-        tick: Tick = Tick.from_mt5(raw_tick)
-        return _MarketData(
-            tick=tick,
-            server_epoch=symbol_info.time,
-            stops_level=symbol_info.trade_stops_level,
-        )
+        tick = Tick.from_mt5(raw_tick)
+
+        if symbol_spec is not None:
+            return _MarketData(tick=tick, server_epoch=raw_tick.time, stops_level=symbol_spec.stops_level)
+
+        symbol_info = mt.symbol_info(symbol)
+        if symbol_info is None:
+            logger.error(f"FetchMarketDataFail sym={symbol} | reason=symbol_info_unavailable")
+            return None
+
+        return _MarketData(tick=tick, server_epoch=symbol_info.time, stops_level=symbol_info.trade_stops_level)
 
     def _resolve_expiration(
         self, request: EntryRequest, symbol: str, market: _MarketData | None = None
