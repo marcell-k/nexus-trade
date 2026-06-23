@@ -317,7 +317,7 @@ class Orchestrator:
                     logger.exception("DDRefreshFail process=orchestrator")
                 last_drawdown_refresh = now_mt
 
-            current_time = datetime.now(tz=broker_tz)
+            current_time = datetime.now()
             active = sum(1 for p in self.strategy_processes.values() if p.is_alive())
             cache_pos = self.global_position_count.value
             total_tr = self.global_trade_count.value
