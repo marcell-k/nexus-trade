@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ctypes
 import logging
+import threading
 import time
 from datetime import datetime, timedelta
 from multiprocessing import Lock, Manager, Process, Value
@@ -496,20 +497,50 @@ class Orchestrator:
         self.monitor_heartbeats()
 
     def _drain_strategy_processes(self) -> None:
-        """Wait 3s for graceful exit, then terminate, then kill."""
-        for name, process in self.strategy_processes.items():
-            if not process.is_alive():
-                logger.debug(f"ProcState name={name} | state=already_exited | code={process.exitcode}")
-                continue
-            process.join(timeout=3)
-            if process.is_alive():
-                logger.debug(f"ProcState name={name} | state=join_timeout | action=terminate")
-                process.terminate()
-                process.join(timeout=5)
-            if process.is_alive():
+        """Drain all strategy processes in parallel: 3 s graceful → terminate → 5 s → kill."""
+        alive: list[tuple[str, Process]] = [
+            (name, proc) for name, proc in self.strategy_processes.items() if proc.is_alive()
+        ]
+        if not alive:
+            for name, proc in self.strategy_processes.items():
+                logger.debug(f"ProcState name={name} | state=already_exited | code={proc.exitcode}")
+            return
+
+        # Phase 1 — parallel graceful join (3 s)
+        grace_threads = [threading.Thread(target=proc.join, kwargs={"timeout": 3}, daemon=True) for _, proc in alive]
+        for t in grace_threads:
+            t.start()
+        for t in grace_threads:
+            t.join()
+
+        # Phase 2 — terminate stragglers
+        stragglers: list[tuple[str, Process]] = [(name, proc) for name, proc in alive if proc.is_alive()]
+        for name, proc in stragglers:
+            logger.debug(f"ProcState name={name} | state=join_timeout | action=terminate")
+            proc.terminate()
+
+        if not stragglers:
+            for name, proc in alive:
+                logger.debug(f"ProcState name={name} | state=exited | code={proc.exitcode}")
+            return
+
+        # Phase 3 — parallel join after terminate (5 s)
+        term_threads = [
+            threading.Thread(target=proc.join, kwargs={"timeout": 5}, daemon=True) for _, proc in stragglers
+        ]
+        for t in term_threads:
+            t.start()
+        for t in term_threads:
+            t.join()
+
+        # Phase 4 — kill any still unresponsive
+        for name, proc in stragglers:
+            if proc.is_alive():
                 logger.error(f"ProcKill name={name}")
-                process.kill()
-            logger.debug(f"ProcState name={name} | state=exited | code={process.exitcode}")
+                proc.kill()
+
+        for name, proc in self.strategy_processes.items():
+            logger.debug(f"ProcState name={name} | state=exited | code={proc.exitcode}")
 
     def _verify_and_close_remaining(self) -> None:
         try:
@@ -536,7 +567,7 @@ class Orchestrator:
 
         logger.debug("ShutdownPhase n=1 | step=signal_strategies")
         self.shared_state["shutdown_flag"] = True
-        time.sleep(2)
+        time.sleep(0.5)
 
         logger.debug("ShutdownPhase n=2 | step=wait_process_exit")
         self._drain_strategy_processes()

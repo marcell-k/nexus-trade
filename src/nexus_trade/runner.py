@@ -80,6 +80,7 @@ _TRIGGER_SL: str = "SL"
 _TRIGGER_BREAKEVEN: str = "BREAKEVEN"
 _TRIGGER_SIGNAL: str = "SIGNAL"
 _CACHE_STALENESS_THRESHOLD: int = SYSTEM_TIMINGS.cache_staleness_threshold
+_SHUTDOWN_POLL_INTERVAL: float = 0.5
 
 
 @dataclass
@@ -205,6 +206,20 @@ class StrategyRunner:
 
         self._load_meta_models()
 
+    def _interruptible_sleep(self, seconds: float) -> bool:
+        """Sleep up to `seconds`, polling shutdown flag every _SHUTDOWN_POLL_INTERVAL.
+
+        Returns True when interrupted by shutdown flag, False when full duration elapsed.
+        """
+        deadline = time.monotonic() + seconds
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0.0:
+                return False
+            time.sleep(min(_SHUTDOWN_POLL_INTERVAL, remaining))
+            if self.shared_state.get("shutdown_flag", False):
+                return True
+
     def run(self) -> None:
         """Run the main event loop — timeframe-aligned entry + 1-minute exit monitoring."""
         try:
@@ -222,17 +237,19 @@ class StrategyRunner:
 
             while not self.shared_state.get("shutdown_flag", False):
                 now = datetime.now(self.broker_tz)
-                tolerance = timedelta(seconds=5)
 
                 sleep_sec: float = self._seconds_until_next_event(now)
                 if sleep_sec > 0:
-                    time.sleep(sleep_sec)
+                    if self._interruptible_sleep(sleep_sec):
+                        break
                     now = datetime.now(self.broker_tz)
+                tolerance = timedelta(seconds=5)
 
                 data = self._fetch_data()
                 if data is None:
                     logger.error(f"DataFetchFail strat={self.strategy_name} | retry=5s")
-                    time.sleep(5.0)
+                    if self._interruptible_sleep(5.0):
+                        break
                     continue
 
                 self._cycle_tick_dedup.clear()
