@@ -704,9 +704,7 @@ class StrategyRunner:
                     f"DualFill strat={self.strategy_name} | t={ticket} | id={trade_id} | action=split_trade_id"
                 )
                 trade_id = None
-        needs_resolution = (
-            trade_id is not None and self.entry_metadata.get(trade_id, {}).get("expected_entry_price") is None
-        )
+        needs_resolution = trade_id is not None and trade_id in self.pending_tickets
         if trade_id is None:
             trade_id = self._resolve_pending_ticket(pos)
         elif needs_resolution:
