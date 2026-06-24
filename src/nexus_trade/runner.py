@@ -1374,17 +1374,39 @@ class StrategyRunner:
             logger.info(f"ShutdownOrd strat={self.strategy_name} | cancelled={cancelled}")
 
     def _calculate_next_entry_time(self, from_time: datetime) -> datetime:
-        """Calculate next entry time aligned to timeframe boundary from given time."""
+        """Calculate next entry time aligned to timeframe boundary."""
         offset_td = timedelta(seconds=self.strategy_offset_seconds)
 
-        next_boundary_minute = ((from_time.minute // self.timeframe_minutes) + 1) * self.timeframe_minutes
-        hours_to_add = next_boundary_minute // 60
-        adjusted_minute = next_boundary_minute % 60
-
-        next_entry = from_time.replace(minute=adjusted_minute, second=0, microsecond=0)
-        if hours_to_add:
-            next_entry += timedelta(hours=hours_to_add)
-        next_entry += offset_td
+        if self.timeframe_minutes == 43200:  # MN1 — first day of next month
+            if from_time.month == 12:
+                boundary = from_time.replace(
+                    year=from_time.year + 1,
+                    month=1,
+                    day=1,
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+            else:
+                boundary = from_time.replace(
+                    month=from_time.month + 1,
+                    day=1,
+                    hour=0,
+                    minute=0,
+                    second=0,
+                    microsecond=0,
+                )
+        elif self.timeframe_minutes == 10080:  # W1 — next Monday midnight
+            days_to_monday = (7 - from_time.weekday()) % 7 or 7
+            boundary = from_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=days_to_monday)
+        else:
+            # M1 through D1: align to minute-based grid since midnight
+            total_minutes = from_time.hour * 60 + from_time.minute
+            next_boundary_total = ((total_minutes // self.timeframe_minutes) + 1) * self.timeframe_minutes
+            boundary = from_time.replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(
+                minutes=next_boundary_total
+            )
 
         if next_entry <= from_time:
             next_entry += timedelta(minutes=self.timeframe_minutes)
