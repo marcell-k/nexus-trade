@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from datetime import time as dt_time
 from typing import TYPE_CHECKING
+from zoneinfo import ZoneInfo
 
 import MetaTrader5 as mt
 
@@ -15,8 +16,6 @@ from nexus_trade.filters.costs import MarketCostCalculator
 from nexus_trade.filters.news import NewsFilter
 
 if TYPE_CHECKING:
-    from zoneinfo import ZoneInfo
-
     from MetaTrader5 import AccountInfo
 
     from nexus_trade.config.profile import DrawdownThresholdConfig, RiskProfile
@@ -349,8 +348,6 @@ class RiskManager:
         th = self.strategy_config.trading_hours
         if not th.enabled or not th.sessions:
             return ValidationResult(True, "TradingHours disabled")
-
-        from zoneinfo import ZoneInfo
 
         tz = ZoneInfo(th.timezone)
         now: dt_time = datetime.now(tz).time().replace(second=0, microsecond=0)

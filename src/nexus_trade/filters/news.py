@@ -340,6 +340,7 @@ class NewsFilter:
         if not self._load_calendar():
             logger.warning(f"NewsCalUnavailable strat={self.strategy_name}")
 
+            return False
         self._ensure_holiday_indexes()
         check_date_strategy = check_time.date()
 

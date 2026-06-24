@@ -69,14 +69,8 @@ class TradeIDSequenceManager:
         with contextlib.suppress(sqlite3.Error):
             self._conn.rollback()
 
-    @contextmanager
-    def _atomic_transaction(self) -> Generator[sqlite3.Connection]:
-        """
-        Context manager for atomic read-modify-write transactions.
-
-        Uses BEGIN IMMEDIATE to acquire lock before reading,
-        preventing concurrent modifications.
-        """
+    def _begin_immediate(self) -> sqlite3.Connection:
+        """Acquire BEGIN IMMEDIATE lock with one reconnect retry on connection errors."""
         for attempt in (1, 2):
             self._ensure_connected()
             if self._conn is None:
@@ -86,17 +80,10 @@ class TradeIDSequenceManager:
                         raise RuntimeError("Failed to establish database connection.")
                 else:
                     raise RuntimeError("Database connection is not available.")
-
             conn = self._conn
             try:
-                _ = conn.execute("BEGIN IMMEDIATE")
-                try:
-                    yield self._conn
-                    self._conn.commit()
-                    return
-                except Exception:
-                    self._rollback_quietly()
-                    raise
+                conn.execute("BEGIN IMMEDIATE")
+                return conn
             except sqlite3.OperationalError as e:
                 self._rollback_quietly()
                 logger.error(f"TradeIDTxnFail err={e}")
@@ -113,6 +100,22 @@ class TradeIDSequenceManager:
                 self._rollback_quietly()
                 logger.error(f"TradeIDDBErr err={e}")
                 raise
+        raise RuntimeError("Database connection is not available.")
+
+    @contextmanager
+    def _atomic_transaction(self) -> Generator[sqlite3.Connection]:
+        """Context manager for atomic read-modify-write transactions.
+
+        Uses BEGIN IMMEDIATE to acquire lock before reading,
+        preventing concurrent modifications.
+        """
+        conn = self._begin_immediate()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            self._rollback_quietly()
+            raise
 
     def close(self) -> None:
         """Close persistent connection."""

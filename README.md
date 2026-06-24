@@ -78,11 +78,11 @@ uv sync
 cp src/nexus_trade/config/profiles/example.toml src/nexus_trade/config/profiles/live.toml
 
 # 4. Create a .env file
-MT5_LOGIN=12345678
-MT5_PASSWORD=yourpassword
-MT5_SERVER=YourBroker-Live
+LOGIN=12345678
+PASSWORD=yourpassword
+SERVER=YourBroker-Live
 MT5_PATH=C:\Program Files\MetaTrader 5\terminal64.exe
-MT5_CALENDAR_PATH=path_to_calendar.txt
+CALENDAR_PATH=path_to_calendar.txt
 BROKER_TIMEZONE="Europe/Athens"
 RISK_PROFILE=src\nexus_trade\config\profiles\live.toml
 

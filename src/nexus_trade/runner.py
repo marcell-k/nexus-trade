@@ -10,7 +10,7 @@ import threading
 import time
 from contextlib import suppress
 from dataclasses import dataclass, replace
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Literal, cast
 
 import MetaTrader5 as mt
@@ -433,6 +433,12 @@ class StrategyRunner:
         new_trade_ids: list[int] = []
         if missing_positions:
             new_trade_ids = self.trade_id_manager.generate_batch(len(missing_positions))
+            midnight_ts: int = int(
+                datetime.now(self.broker_tz)
+                .replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=None)
+                .replace(tzinfo=UTC)
+                .timestamp()
+            )
             for pos, trade_id in zip(missing_positions, new_trade_ids, strict=True):
                 self._seed_startup_position_tracking(trade_id=trade_id, pos=pos, submission_time=current_time)
                 metadata = self.entry_metadata[trade_id]
@@ -446,6 +452,9 @@ class StrategyRunner:
                     volume_multiplier=metadata.get("volume_multiplier"),
                 )
                 self.trade_logger.log_fill(fill_data)
+                if pos.time >= midnight_ts:
+                    self.atomic_increment_trade()
+                    self._increment_daily_trade_count()
 
         self.local_position_count = position_count
         ticket_str = (
@@ -1071,7 +1080,7 @@ class StrategyRunner:
             loaded = self._load_strategy_positions(mode="cache", include_unknown=False)
             if loaded is None:
                 logger.error(f"ModifySkip strat={self.strategy_name} | reason=mt5_api_failure")
-                raise RuntimeError(f"{self.strategy_name}: MT5 positions_get() returned None during modify pass")
+                return
             positions = loaded
 
         if not positions:
@@ -1408,9 +1417,9 @@ class StrategyRunner:
                 minutes=next_boundary_total
             )
 
+        next_entry = boundary + offset_td
         if next_entry <= from_time:
             next_entry += timedelta(minutes=self.timeframe_minutes)
-
         return next_entry
 
     def _calculate_next_exit_time(self, from_time: datetime) -> datetime:
