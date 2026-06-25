@@ -338,6 +338,8 @@ class StrategyRunner:
             return
         for pos in positions:
             ticket = pos["ticket"]
+            if ticket not in self.known_positions:
+                continue
             trade_id = self.ticket_to_trade_id.get(ticket)
             if trade_id is None:
                 continue
