@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import argparse
 import calendar
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -12,6 +14,7 @@ import pandas as pd
 
 from nexus_trade.config.account import MT5ConnectionConfig, load_account_config_from_env, load_env_file
 from nexus_trade.core.constants import TIMEFRAME_STRING_MAP, TIMEFRAME_TO_MINUTES
+from nexus_trade.main import resolve_env_path
 
 if TYPE_CHECKING:
     import numpy as np
@@ -24,10 +27,20 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def _load_account() -> MT5ConnectionConfig:
-    env_path = Path.home() / ".config" / "mt5-trading" / ".env"
-    load_env_file(str(env_path))
-    return load_account_config_from_env()
+def _load_account(env_path: Path) -> MT5ConnectionConfig:
+    """Load env file, resolve optional path fields like main.py does, then validate."""
+    load_env_file(str(env_path), strict=True, override_existing=False)
+
+    calendar_env = os.environ.get("CALENDAR_PATH")
+    if calendar_env:
+        os.environ["CALENDAR_PATH"] = str(resolve_env_path(calendar_env) or Path(calendar_env).expanduser())
+
+    profile_env = os.environ.get("RISK_PROFILE")
+    risk_profile_path: Path | None = (
+        (resolve_env_path(profile_env) or Path(profile_env).expanduser()) if profile_env else None
+    )
+
+    return load_account_config_from_env(risk_profile_path=risk_profile_path)
 
 
 def _connect(config: MT5ConnectionConfig) -> None:
@@ -189,7 +202,13 @@ def batch_download_historical(
 
 
 if __name__ == "__main__":
-    _account_config = _load_account()
+    parser = argparse.ArgumentParser(description="NexusTrade historical data downloader")
+    _ = parser.add_argument("--env", type=str, required=True, help="Path to environment file.")
+    args = parser.parse_args()
+    _env_path = resolve_env_path(args.env) or Path(args.env).expanduser()
+
+    print(f"Loading environment from: {_env_path.name}")
+    _account_config = _load_account(_env_path)
     _connect(_account_config)
 
     TIMEFRAME = "M5"
