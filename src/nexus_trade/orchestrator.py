@@ -456,21 +456,16 @@ class Orchestrator:
 
     def _refresh_daily_drawdown(self, account: AccountInfo) -> None:
         now = datetime.now(tz=self.account_config.broker_tz)
-        midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
-
         current_equity = float(account.equity)
-        initial_balance = float(self._profile.account.initial_balance)
-
         now_ts = now.timestamp()
 
-        daily_deals = mt.history_deals_get(midnight, now + timedelta(seconds=1)) or ()
-        daily_pnl = sum(float(d.profit + d.commission + d.swap + d.fee) for d in daily_deals if d.type in (0, 1))
-
-        daily_peak = max(float(initial_balance) + daily_pnl, current_equity)
+        stored_high = float(self.shared_state.get("daily_equity_high", 0.0) or 0.0)
+        daily_peak = max(stored_high, current_equity)
         daily_dd = (daily_peak - current_equity) / daily_peak if daily_peak > 0 else 0.0
 
         self.shared_state.update(
             {
+                "daily_equity_high": daily_peak,
                 "daily_drawdown": daily_dd,
                 "daily_drawdown_peak_equity": daily_peak,
                 "daily_drawdown_current_equity": current_equity,
@@ -479,7 +474,9 @@ class Orchestrator:
                 "daily_drawdown_cache_date": now.date(),
             }
         )
-        logger.debug(f"DDDailyRefresh daily={daily_dd * 100:.2f}% | equity={current_equity:.2f}")
+        logger.debug(
+            f"DDDailyRefresh daily={daily_dd * 100:.2f}% | equity={current_equity:.2f} | peak={daily_peak:.2f}"
+        )
 
     def start(self) -> None:
         self.discover_strategies()
