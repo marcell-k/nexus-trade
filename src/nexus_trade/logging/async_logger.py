@@ -51,6 +51,7 @@ class AsyncTradeLogger:
                     f"AsyncLogWriteFail strat={self._logger.strategy_name} | m={method_name} | err={e}",
                     exc_info=True,
                 )
+                raise
             finally:
                 self._queue.task_done()
         logger.debug(f"AsyncLogThreadExit strat={self._logger.strategy_name}")

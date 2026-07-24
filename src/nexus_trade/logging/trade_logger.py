@@ -188,9 +188,11 @@ class TradeLogger:
         except sqlite3.IntegrityError as exc:
             conn.rollback()
             logger.error(f"DBIntegrity op={operation_id} | err={exc}")
+            raise
         except Exception as exc:
             conn.rollback()
             logger.error(f"DBFail op={operation_id} | err={exc}", exc_info=True)
+            raise
 
     def log_fill(self, data: FillData) -> None:
         """Log position fill with unique trade_id."""
@@ -203,40 +205,48 @@ class TradeLogger:
         )
         fill_time_mseconds = data.fill_time_ms if data.fill_time_ms is not None else None
 
-        with self._transact(f"fill:{data.trade_id}") as conn:
-            _ = conn.execute(
-                """
-                INSERT INTO trades (
-                    trade_id, partial_sequence, ticket,
-                    entry_date, entry_time,
-                    magic_number, strategy_name, symbol, size,
-                    entry_price, expected_entry_price, entry_spread,
-                    opening_sl, tp,
-                    slippage_cost, fill_time_mseconds,
-                    position_type, volume_multiplier
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-                (
-                    data.trade_id,
-                    0,
-                    data.position["ticket"],
-                    entry_date,
-                    entry_time,
-                    data.position["magic"],
-                    data.strategy_name,
-                    data.position["symbol"],
-                    size,
-                    data.position["price_open"],
-                    data.expected_entry_price,
-                    entry_spread,
-                    data.opening_sl,
-                    data.position["tp"] if data.position["tp"] != 0.0 else None,
-                    slippage_cost,
-                    fill_time_mseconds,
-                    "BUY" if data.position["type"] == PositionType.BUY else "SELL",
-                    data.volume_multiplier,
-                ),
+        try:
+            with self._transact(f"fill:{data.trade_id}") as conn:
+                _ = conn.execute(
+                    """
+                    INSERT INTO trades (
+                        trade_id, partial_sequence, ticket,
+                        entry_date, entry_time,
+                        magic_number, strategy_name, symbol, size,
+                        entry_price, expected_entry_price, entry_spread,
+                        opening_sl, tp,
+                        slippage_cost, fill_time_mseconds,
+                        position_type, volume_multiplier
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                    (
+                        data.trade_id,
+                        0,
+                        data.position["ticket"],
+                        entry_date,
+                        entry_time,
+                        data.position["magic"],
+                        data.strategy_name,
+                        data.position["symbol"],
+                        size,
+                        data.position["price_open"],
+                        data.expected_entry_price,
+                        entry_spread,
+                        data.opening_sl,
+                        data.position["tp"] if data.position["tp"] != 0.0 else None,
+                        slippage_cost,
+                        fill_time_mseconds,
+                        "BUY" if data.position["type"] == PositionType.BUY else "SELL",
+                        data.volume_multiplier,
+                    ),
+                )
+            entryprice_display = format_price_display(data.position["price_open"])
+            logger.info(
+                f"FillLog id={data.trade_id} | sym={data.position['symbol']} | sz={size:+.2f} | px={entryprice_display}"
             )
+        except Exception:
+            logger.critical(f"FillLogLost id={data.trade_id} | t={data.position['ticket']} | action=data_not_persisted")
+            raise
         entry_price_display = format_price_display(data.position["price_open"])
         logger.info(
             f"FillLog id={data.trade_id} | sym={data.position['symbol']} | sz={size:+.2f} | px={entry_price_display}"
@@ -277,45 +287,51 @@ class TradeLogger:
 
         conn = self._get_connection()
 
-        with self._transact(f"close:{data.trade_id}"):
-            before_changes = conn.total_changes
-            _ = conn.execute(
-                """
-                UPDATE trades
-                SET exit_date = ?, exit_time = ?, exit_price = ?, expected_exit_price = ?,
-                    exit_spread = ?, rrr = ?, commission = ?, swap = ?,
-                    gross_pnl = ?, net_pnl = ?, slippage_cost = ?, exit_trigger = ?
-                WHERE trade_id = ? AND partial_sequence = 0 AND exit_time IS NULL
-            """,
-                (
-                    exit_date,
-                    exit_time,
-                    actual_exit_price,
-                    expected_exit_price,
-                    exit_spread,
-                    rrr,
-                    commission,
-                    data.position["swap"],
-                    gross_pnl,
-                    net_pnl,
-                    slippage_cost,
-                    data.exit_trigger,
-                    data.trade_id,
-                ),
-            )
-
-            if conn.total_changes == before_changes:
-                logger.warning(
-                    f"CloseLogSkip id={data.trade_id} | t={data.position['ticket']} | reason=no_open_entry_row"
+        try:
+            with self._transact(f"close:{data.trade_id}"):
+                before_changes = conn.total_changes
+                _ = conn.execute(
+                    """
+                    UPDATE trades
+                    SET exit_date = ?, exit_time = ?, exit_price = ?, expected_exit_price = ?,
+                        exit_spread = ?, rrr = ?, commission = ?, swap = ?,
+                        gross_pnl = ?, net_pnl = ?, slippage_cost = ?, exit_trigger = ?
+                    WHERE trade_id = ? AND partial_sequence = 0 AND exit_time IS NULL
+                """,
+                    (
+                        exit_date,
+                        exit_time,
+                        actual_exit_price,
+                        expected_exit_price,
+                        exit_spread,
+                        rrr,
+                        commission,
+                        data.position["swap"],
+                        gross_pnl,
+                        net_pnl,
+                        slippage_cost,
+                        data.exit_trigger,
+                        data.trade_id,
+                    ),
                 )
-                return
 
-        rrr_display = f"{rrr:.2f}" if rrr is not None else "NA"
-        slippage_display = f"{slippage_cost:.2f}" if slippage_cost is not None else "NA"
-        logger.info(
-            f"CloseLog id={data.trade_id} | px={format_price_display(actual_exit_price)} | "
-            f"pnl={net_pnl:.2f} | rrr={rrr_display} | slip={slippage_display}"
-        )
+                if conn.total_changes == before_changes:
+                    logger.warning(
+                        f"CloseLogSkip id={data.trade_id} | t={data.position['ticket']} | reason=no_open_entry_row"
+                    )
+                    return
+
+            rrr_display = f"{rrr:.2f}" if rrr is not None else "NA"
+            slippage_display = f"{slippage_cost:.2f}" if slippage_cost is not None else "NA"
+            logger.info(
+                f"CloseLog id={data.trade_id} | px={format_price_display(actual_exit_price)} | "
+                f"pnl={net_pnl:.2f} | rrr={rrr_display} | slip={slippage_display}"
+            )
+        except Exception:
+            logger.critical(
+                f"CloseLogLost id={data.trade_id} | t={data.position['ticket']} | action=data_not_persisted"
+            )
+            raise
 
     def log_partial_close(self, data: PartialCloseData) -> None:
         """Log partial position close (creates new row with incremented partial_sequence)."""
@@ -362,49 +378,62 @@ class TradeLogger:
 
         size = data.closed_volume if position.type == 0 else -data.closed_volume
 
-        with self._transact(f"partial_close:{data.trade_id}:{next_partial}") as conn:
-            _ = conn.execute(
-                """
-                INSERT INTO trades (
-                    trade_id, partial_sequence, ticket, entry_date, entry_time, exit_date, exit_time,
-                    magic_number, strategy_name, symbol, size, entry_price, expected_entry_price, entry_spread,
-                    exit_price, expected_exit_price, exit_spread, opening_sl, tp, rrr,
-                    commission, swap, gross_pnl, net_pnl, slippage_cost, fill_time_mseconds,
-                    position_type, exit_trigger, volume_multiplier
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    data.trade_id,
-                    next_partial,
-                    position.ticket,
-                    original["entry_date"],
-                    original["entry_time"],
-                    exit_date,
-                    exit_time,
-                    original["magic_number"],
-                    data.strategy_name,
-                    position.symbol,
-                    size,
-                    data.entry_price,
-                    original["expected_entry_price"],
-                    original["entry_spread"],
-                    actual_exit_price,
-                    data.expected_exit_price,
-                    exit_spread,
-                    original["opening_sl"],
-                    original["tp"],
-                    rrr,
-                    partial_commission,
-                    position.swap * partial_ratio,
-                    partial_gross_pnl,
-                    net_pnl,
-                    slippage_cost,
-                    original["fill_time_mseconds"],
-                    "BUY" if position.type == PositionType.BUY else "SELL",
-                    data.exit_trigger,
-                    original["volume_multiplier"],
-                ),
+        try:
+            with self._transact(f"partial_close:{data.trade_id}:{next_partial}") as conn:
+                _ = conn.execute(
+                    """
+                    INSERT INTO trades (
+                        trade_id, partial_sequence, ticket, entry_date, entry_time, exit_date, exit_time,
+                        magic_number, strategy_name, symbol, size, entry_price, expected_entry_price, entry_spread,
+                        exit_price, expected_exit_price, exit_spread, opening_sl, tp, rrr,
+                        commission, swap, gross_pnl, net_pnl, slippage_cost, fill_time_mseconds,
+                        position_type, exit_trigger, volume_multiplier
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        data.trade_id,
+                        next_partial,
+                        position.ticket,
+                        original["entry_date"],
+                        original["entry_time"],
+                        exit_date,
+                        exit_time,
+                        original["magic_number"],
+                        data.strategy_name,
+                        position.symbol,
+                        size,
+                        data.entry_price,
+                        original["expected_entry_price"],
+                        original["entry_spread"],
+                        actual_exit_price,
+                        data.expected_exit_price,
+                        exit_spread,
+                        original["opening_sl"],
+                        original["tp"],
+                        rrr,
+                        partial_commission,
+                        position.swap * partial_ratio,
+                        partial_gross_pnl,
+                        net_pnl,
+                        slippage_cost,
+                        original["fill_time_mseconds"],
+                        "BUY" if position.type == PositionType.BUY else "SELL",
+                        data.exit_trigger,
+                        original["volume_multiplier"],
+                    ),
+                )
+
+            slippage_display = f"{slippage_cost:.2f}" if slippage_cost is not None else "NA"
+            logger.info(
+                f"PartClose id={data.trade_id} | p={next_partial} | "
+                f"vol={data.closed_volume:.2f} | px={format_price_display(actual_exit_price)} | "
+                f"pnl={net_pnl:.2f} | slip={slippage_display}"
             )
+        except Exception:
+            logger.critical(
+                f"PartCloseLogLost id={data.trade_id} | p={next_partial} | t={position.ticket} | action=data_not_persisted"  # noqa: E501
+            )
+            raise
 
         slippage_display = f"{slippage_cost:.2f}" if slippage_cost is not None else "NA"
         logger.info(
