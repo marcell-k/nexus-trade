@@ -7,6 +7,9 @@ import logging
 import os
 import signal
 import sys
+import threading
+import time
+from contextlib import suppress
 from pathlib import Path
 from typing import TYPE_CHECKING, Final, Never
 
@@ -23,6 +26,18 @@ if TYPE_CHECKING:
 CONFIG_DIR: Final[Path] = Path("~/.config/mt5-trading").expanduser()
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 logger = logging.getLogger(__name__)
+
+
+def _watch_stop_flag(stop_flag_path: Path, poll_interval: float = 1.0) -> None:
+    """Poll for stop-flag file; on detection, deliver SIGINT to main thread."""
+    while True:
+        if stop_flag_path.exists():
+            logger.info(f"StopFlag detected path={stop_flag_path}")
+            with suppress(OSError):
+                stop_flag_path.unlink()
+            signal.raise_signal(signal.SIGINT)
+            return
+        time.sleep(poll_interval)
 
 
 class _ExcludeHeartbeatFromFileFilter(logging.Filter):
@@ -135,6 +150,15 @@ def main() -> int:
         assert account_config.risk_profile_path is not None  # guaranteed: passed resolved path above
         profile = load_profile(account_config.risk_profile_path, account_config.broker_tz)
         logger.info(f"MainStart acct={profile.account.type} | profile={account_config.risk_profile_path.name}")
+
+        stop_flag_env = os.environ.get("NEXUS_STOP_FLAG")
+        if stop_flag_env:
+            stop_flag_path = Path(stop_flag_env)
+            watcher = threading.Thread(target=_watch_stop_flag, args=(stop_flag_path,), daemon=True)
+            watcher.start()
+            logger.info(f"StopWatcher started path={stop_flag_path}")
+        else:
+            logger.warning("NEXUS_STOP_FLAG not set — remote stop via flag file disabled")
 
         orchestrator = Orchestrator(account_config=account_config, profile=profile, log_root=log_root)
 
