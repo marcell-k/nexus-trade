@@ -173,7 +173,7 @@ class StrategyRunner:
 
         logger.info(
             f"Init strat={self.strategy_name:<9} | tf={self.timeframe:<3} | "
-            f"sym={self.symbol:<7} | m={self.magic_number:>3}"
+            f"sym={self.symbol:<10} | m={self.magic_number:>3}"
         )
 
     def setup(self) -> None:

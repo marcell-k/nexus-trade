@@ -111,7 +111,7 @@ def main() -> int:
 
     log_section_header(
         logger,
-        f"TRADING SYSTEM STARTING | Config: {env_path.name} | Log dir: {relative_log_path}",
+        f"STARTING | Config: {env_path.name} | Log dir: {relative_log_path}",
         level=logging.INFO,
     )
 
