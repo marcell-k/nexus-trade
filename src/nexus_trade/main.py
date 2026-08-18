@@ -85,7 +85,8 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _clean_env_name(env_path: Path) -> str:
-    return env_path.stem
+    name = env_path.name
+    return name.removeprefix(".env.") if name.startswith(".env.") else env_path.stem
 
 
 def main() -> int:
