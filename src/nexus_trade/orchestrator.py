@@ -45,10 +45,13 @@ HEARTBEAT_LOG_INTERVAL_SECONDS: int = SYSTEM_TIMINGS.heartbeat_log_interval
 class Orchestrator:
     """Multi-strategy orchestrator with shared position cache."""
 
-    def __init__(self, account_config: MT5ConnectionConfig, profile: RiskProfile, log_root: Path) -> None:
+    def __init__(
+        self, account_config: MT5ConnectionConfig, profile: RiskProfile, log_root: Path, stop_file: Path | None = None
+    ) -> None:
         self.log_root: Path = Path(log_root)
         self.account_config: MT5ConnectionConfig = account_config
         self._profile: RiskProfile = profile
+        self.stop_file: Path | None = stop_file
 
         self.manager: SyncManager = Manager()
 
@@ -308,6 +311,11 @@ class Orchestrator:
         last_drawdown_refresh: float = time.time()
 
         while not self.shared_state["shutdown_flag"]:
+            if self._check_stop_file():
+                logger.critical("StopFileShutdown action=graceful_shutdown_requested")
+                self.shutdown()
+                break
+
             self.refresh_position_cache()
 
             now_mt = time.time()
@@ -367,6 +375,17 @@ class Orchestrator:
                 f"StratConfig name={name} | sym={params.symbol} | tf={params.timeframe} | "
                 f"sizing={method} | risk={risk_value}"
             )
+
+    def _check_stop_file(self) -> bool:
+        """Return True and consume the stop-file sentinel if a remote shutdown was requested."""
+        if self.stop_file is None or not self.stop_file.exists():
+            return False
+        try:
+            self.stop_file.unlink(missing_ok=True)
+        except OSError as exc:
+            logger.warning(f"StopFileUnlinkFail path={self.stop_file} | err={exc}")
+        logger.info(f"StopFileDetected path={self.stop_file} | action=graceful_shutdown")
+        return True
 
     def _connect_to_mt5(self) -> None:
         self.connection = MT5Connection(self.account_config)

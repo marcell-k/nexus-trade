@@ -137,7 +137,10 @@ def main() -> int:
         profile = load_profile(account_config.risk_profile_path, account_config.broker_tz)
         logger.info(f"MainStart acct={profile.account.type} | profile={account_config.risk_profile_path.name}")
 
-        orchestrator = Orchestrator(account_config=account_config, profile=profile, log_root=log_root)
+        stop_file = PROJECT_ROOT / f".stop.{clean_env_name}"
+        orchestrator = Orchestrator(
+            account_config=account_config, profile=profile, log_root=log_root, stop_file=stop_file
+        )
 
         with WindowsInhibitor(keep_display=False, away_mode=True, logger=logger):
             orchestrator.start()
