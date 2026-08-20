@@ -35,3 +35,10 @@ src/nexus_trade/config/profiles/*
 .ruff_cache/
 uv.lock
 pyrightconfig.json
+
+
+todo.md
+nssm.md
+
+*.bat
+.vscode/
