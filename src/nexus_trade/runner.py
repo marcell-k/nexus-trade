@@ -56,6 +56,7 @@ from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.logging.async_logger import AsyncTradeLogger
 from nexus_trade.logging.trade_logger import TradeLogger
 from nexus_trade.risk.manager import RiskManager
+from nexus_trade.utils.colored_logging import ColoredFormatter, enable_ansi
 from nexus_trade.utils.format import format_price_display
 
 if TYPE_CHECKING:
@@ -1471,17 +1472,17 @@ class StrategyRunner:
 
 
 def run_strategy_process(config: RunnerConfig) -> None:
-    """Entry point for ``multiprocessing.Process``."""
+    enable_ansi()
     log_root = config.log_root
     log_root.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_root / f"{config.strategy_name}.log"),
-            logging.StreamHandler(),
-        ],
-    )
+    fmt = "%(asctime)s - %(levelname)s - %(message)s"
+
+    file_handler = logging.FileHandler(log_root / f"{config.strategy_name}.log")
+    file_handler.setFormatter(logging.Formatter(fmt))
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(ColoredFormatter(fmt))
+
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler])
 
     runner = StrategyRunner(config=config)
     try:

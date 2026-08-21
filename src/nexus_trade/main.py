@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from nexus_trade.config.account import load_account_config_from_env, load_env_file
 from nexus_trade.config.profile import load_profile
+from nexus_trade.utils.colored_logging import ColoredFormatter, enable_ansi
 from nexus_trade.utils.format import log_section_header
 from nexus_trade.utils.system import WindowsInhibitor
 
@@ -33,17 +34,20 @@ class _ExcludeHeartbeatFromFileFilter(logging.Filter):
 
 
 def setup_logging(log_root: Path, clean_env_name: str) -> None:
+    enable_ansi()
     log_root.mkdir(parents=True, exist_ok=True)
     log_filename = f"orchestrator_{clean_env_name}.log"
+
+    fmt = "%(asctime)s - %(levelname)s - %(message)s"
+
     file_handler = logging.FileHandler(log_root / log_filename)
+    file_handler.setFormatter(logging.Formatter(fmt))
     file_handler.addFilter(_ExcludeHeartbeatFromFileFilter())
+
     stream_handler = logging.StreamHandler()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[file_handler, stream_handler],
-        force=True,
-    )
+    stream_handler.setFormatter(ColoredFormatter(fmt))
+
+    logging.basicConfig(level=logging.INFO, handlers=[file_handler, stream_handler], force=True)
 
 
 def resolve_env_path(env_arg: str) -> Path | None:
