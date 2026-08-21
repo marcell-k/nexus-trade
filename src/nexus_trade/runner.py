@@ -54,6 +54,7 @@ from nexus_trade.execution.request import (
 )
 from nexus_trade.execution.trade_ids import TradeIDSequenceManager
 from nexus_trade.logging.async_logger import AsyncTradeLogger
+from nexus_trade.logging.mp_logging import LogQueue, configure_worker_logging
 from nexus_trade.logging.trade_logger import TradeLogger
 from nexus_trade.risk.manager import RiskManager
 from nexus_trade.utils.format import format_price_display
@@ -98,6 +99,7 @@ class RunnerConfig:
     position_cache_lock: ProcessLock
     trade_id_db_path: Path
     meta_labeling: MetaLabelingConfig
+    log_queue: LogQueue
     strategy_offset_seconds: float = 0.0
 
 
@@ -1471,18 +1473,8 @@ class StrategyRunner:
 
 
 def run_strategy_process(config: RunnerConfig) -> None:
-    """Entry point for ``multiprocessing.Process``."""
-    log_root = config.log_root
-    log_root.mkdir(parents=True, exist_ok=True)
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[
-            logging.FileHandler(log_root / f"{config.strategy_name}.log"),
-            logging.StreamHandler(),
-        ],
-    )
-
+    """Entry point for `multiprocessing.Process`."""
+    configure_worker_logging(config.log_queue)
     runner = StrategyRunner(config=config)
     try:
         runner.run()

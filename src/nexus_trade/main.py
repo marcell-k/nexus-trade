@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from nexus_trade.config.account import load_account_config_from_env, load_env_file
 from nexus_trade.config.profile import load_profile
+from nexus_trade.logging.mp_logging import create_log_queue, setup_logging
 from nexus_trade.utils.format import log_section_header
 from nexus_trade.utils.system import WindowsInhibitor
 
@@ -23,27 +24,6 @@ if TYPE_CHECKING:
 CONFIG_DIR: Final[Path] = Path("~/.config/mt5-trading").expanduser()
 PROJECT_ROOT: Final[Path] = Path(__file__).resolve().parent.parent.parent
 logger = logging.getLogger(__name__)
-
-
-class _ExcludeHeartbeatFromFileFilter(logging.Filter):
-    """Exclude orchestrator heartbeat status lines from file logs."""
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        return "HB t=" not in record.getMessage()
-
-
-def setup_logging(log_root: Path, clean_env_name: str) -> None:
-    log_root.mkdir(parents=True, exist_ok=True)
-    log_filename = f"orchestrator_{clean_env_name}.log"
-    file_handler = logging.FileHandler(log_root / log_filename)
-    file_handler.addFilter(_ExcludeHeartbeatFromFileFilter())
-    stream_handler = logging.StreamHandler()
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s - %(levelname)s - %(message)s",
-        handlers=[file_handler, stream_handler],
-        force=True,
-    )
 
 
 def resolve_env_path(env_arg: str) -> Path | None:
@@ -92,12 +72,13 @@ def main() -> int:
 
     clean_env_name = _clean_env_name(env_path)
     log_root = PROJECT_ROOT / "logs" / clean_env_name
-    relative_log_path = log_root.relative_to(PROJECT_ROOT)
-    setup_logging(log_root, clean_env_name)
+
+    log_queue = create_log_queue()
+    listener = setup_logging(log_queue)
 
     log_section_header(
         logger,
-        f"TRADING SYSTEM STARTING | Config: {env_path.name} | Log dir: {relative_log_path}",
+        f"TRADING SYSTEM STARTING | Config: {env_path.name}",
         level=logging.INFO,
     )
 
@@ -139,7 +120,11 @@ def main() -> int:
 
         stop_file = PROJECT_ROOT / f".stop.{clean_env_name}"
         orchestrator = Orchestrator(
-            account_config=account_config, profile=profile, log_root=log_root, stop_file=stop_file
+            account_config=account_config,
+            profile=profile,
+            log_root=log_root,
+            stop_file=stop_file,
+            log_queue=log_queue,
         )
 
         with WindowsInhibitor(keep_display=False, away_mode=True, logger=logger):
@@ -154,6 +139,7 @@ def main() -> int:
         shutdown_once()
         signal.signal(signal.SIGINT, previous_sigint)
         log_section_header(logger, "TRADING SYSTEM STOPPED")
+        listener.stop()
 
     return 0
 

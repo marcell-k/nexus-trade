@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from nexus_trade.core.protocols import AtomicInt, ProcessLock
     from nexus_trade.core.state import SharedState
     from nexus_trade.core.types import OrderSnapshot, PositionCacheEntry
+    from nexus_trade.logging.mp_logging import LogQueue
 
 
 logger = logging.getLogger(__name__)
@@ -46,12 +47,19 @@ class Orchestrator:
     """Multi-strategy orchestrator with shared position cache."""
 
     def __init__(
-        self, account_config: MT5ConnectionConfig, profile: RiskProfile, log_root: Path, stop_file: Path | None = None
+        self,
+        account_config: MT5ConnectionConfig,
+        profile: RiskProfile,
+        log_root: Path,
+        stop_file: Path | None = None,
+        *,
+        log_queue: LogQueue,
     ) -> None:
         self.log_root: Path = Path(log_root)
         self.account_config: MT5ConnectionConfig = account_config
         self._profile: RiskProfile = profile
         self.stop_file: Path | None = stop_file
+        self.log_queue: LogQueue = log_queue
 
         self.manager: SyncManager = Manager()
 
@@ -227,6 +235,7 @@ class Orchestrator:
             position_cache_lock=self.position_cache_lock,
             trade_id_db_path=self.trade_id_db_path,
             meta_labeling=meta_cfg,
+            log_queue=self.log_queue,
             strategy_offset_seconds=strategy_offset_seconds,
         )
 
