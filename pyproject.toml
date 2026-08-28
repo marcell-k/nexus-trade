@@ -17,7 +17,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["basedpyright>=1.39.8", "pytest>=9.0.3", "ruff>=0.4"]
+dev = [
+    "asciichartpy>=1.5.25",
+    "basedpyright>=1.39.8",
+    "pytest>=9.0.3",
+    "ruff>=0.4",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
