@@ -204,13 +204,25 @@ def batch_download_historical(
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="NexusTrade historical data downloader")
     _ = parser.add_argument("--env", type=str, required=True, help="Path to environment file.")
+    _now = datetime.now(ZoneInfo("UTC"))
+    _ = parser.add_argument(
+        "--year", type=int, default=_now.year, help=f"Year to download (default: {_now.year}, current)."
+    )
+    _ = parser.add_argument(
+        "--month",
+        type=int,
+        choices=range(1, 13),
+        default=_now.month,
+        metavar="1-12",
+        help=f"Month to download (default: {_now.month}, current).",
+    )
     args = parser.parse_args()
     _env_path = resolve_env_path(args.env) or Path(args.env).expanduser()
 
     print(f"Loading environment from: {_env_path.name}")
+    print(f"Target month: {args.year}-{args.month:02d}")
     _account_config = _load_account(_env_path)
     _connect(_account_config)
-
     TIMEFRAME = "M5"
     BROKER_TZ: str = _account_config.broker_tz.key
 
@@ -268,8 +280,8 @@ if __name__ == "__main__":
     batch_download_month(
         symbols=SYMBOLS,
         timeframe=TIMEFRAME,
-        year=2026,
-        month=1,
+        year=args.year,
+        month=args.month,
         output_dir="new_month",
         timezone="UTC",
         broker_tz=BROKER_TZ,
